@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="JavaCard PIV applet" default="dist" basedir=".">
+  <description>Builds the project. </description>
+  <target name="dist" description="generate the distribution">
+    <tstamp/>
+    <ant dir="ext/ant"/>
+    <!-- Create the distribution directory -->
+    <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ext/ant/ant-javacard.jar"/>
+    <javacard>
+      <cap aid="a0:00:00:03:08:00:00:10" output="PivApplet.cap" sources="src" version="1.0">
+        <applet class="net.cooperi.pivapplet.PivApplet" aid="a0:00:00:03:08:00:00:10:00"/>
+      </cap>
+    </javacard>
+  </target>
+  <target name="clean" description="clean up">
+    <!-- Delete the built applet -->
+    <delete dir="PivApplet.cap"/>
+  </target>
+</project>
