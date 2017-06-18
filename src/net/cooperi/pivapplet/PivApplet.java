@@ -97,7 +97,6 @@ public class PivApplet extends Applet implements ExtendedLength
 
 	private RandomData randData = null;
 	private Cipher tripleDes = null;
-	private Cipher aes128 = null;
 	private Cipher rsaPkcs1 = null;
 
 	private PivSlot slot9a = null, slot9b = null, slot9c = null,
@@ -142,8 +141,6 @@ public class PivApplet extends Applet implements ExtendedLength
 	{
 		randData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 		tripleDes = Cipher.getInstance(Cipher.ALG_DES_CBC_NOPAD, false);
-		/*aes128 = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD,
-		    false);*/
 		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
 
 		ramBuf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE,
@@ -566,9 +563,6 @@ public class PivApplet extends Applet implements ExtendedLength
 		switch (alg) {
 		case PIV_ALG_3DES:
 			ci = tripleDes;
-			break;
-		case PIV_ALG_AES128:
-			ci = aes128;
 			break;
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
