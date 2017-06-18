@@ -202,44 +202,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		if (selectingApplet()) {
-			short len, le;
-			le = apdu.setOutgoing();
-
-			tlv.setTarget(null);
-
-			tlv.push((byte)0x61);
-
-			tlv.push((byte)0x4F);
-			tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-			tlv.pop();
-
-			tlv.push((byte)0x79);
-			tlv.push((byte)0x4F);
-			tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-			tlv.pop();
-			tlv.pop();
-
-			tlv.push((byte)0x50);
-			tlv.write(APP_NAME, (short)0, (short)APP_NAME.length);
-			tlv.pop();
-
-			tlv.push((byte)0xAC);
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_3DES);
-			tlv.pop();
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_RSA1024);
-			tlv.pop();
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_RSA2048);
-			tlv.pop();
-			tlv.pop();
-
-			len = tlv.pop();
-
-			len = le > len ? len : le;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			sendSelectResponse(apdu);
 			return;
 		}
 
@@ -262,12 +225,58 @@ public class PivApplet extends Applet implements ExtendedLength
 		case INS_GEN_ASYM:
 			processGenAsym(apdu);
 			break;
+		case INS_RESET_PIN:
+			processResetPin(apdu);
+			break;
 		case INS_GET_RESPONSE:
 			continueResponse(apdu);
 			break;
 		default:
 			ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
 		}
+	}
+
+	private void
+	sendSelectResponse(APDU apdu)
+	{
+		short len, le;
+		le = apdu.setOutgoing();
+
+		tlv.setTarget(null);
+
+		tlv.push((byte)0x61);
+
+		tlv.push((byte)0x4F);
+		tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		tlv.pop();
+
+		tlv.push((byte)0x79);
+		tlv.push((byte)0x4F);
+		tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		tlv.pop();
+		tlv.pop();
+
+		tlv.push((byte)0x50);
+		tlv.write(APP_NAME, (short)0, (short)APP_NAME.length);
+		tlv.pop();
+
+		tlv.push((byte)0xAC);
+		tlv.push((byte)0x80);
+		tlv.writeByte(PIV_ALG_3DES);
+		tlv.pop();
+		tlv.push((byte)0x80);
+		tlv.writeByte(PIV_ALG_RSA1024);
+		tlv.pop();
+		tlv.push((byte)0x80);
+		tlv.writeByte(PIV_ALG_RSA2048);
+		tlv.pop();
+		tlv.pop();
+
+		len = tlv.pop();
+
+		len = le > len ? len : le;
+		apdu.setOutgoingLength(len);
+		apdu.sendBytes((short)0, len);
 	}
 
 	private short
@@ -956,6 +965,67 @@ public class PivApplet extends Applet implements ExtendedLength
 			}
 		}
 		pin.update(buffer, newPinOff, (byte)8);
+	}
+
+	private void
+	processResetPin(APDU apdu)
+	{
+		final byte[] buffer = apdu.getBuffer();
+		short lc, pukOff, newPinOff, idx;
+		OwnerPIN pin;
+
+		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		switch (buffer[ISO7816.OFFSET_P2]) {
+		case (byte)0x80:
+			pin = pivPin;
+			break;
+		default:
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		lc = apdu.setIncomingAndReceive();
+		if (lc != apdu.getIncomingLength()) {
+			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			return;
+		}
+
+		pukOff = apdu.getOffsetCdata();
+		if (lc != 16) {
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		if (!pukPin.isValidated() &&
+		    !slot9b.flags[PivSlot.F_UNLOCKED] &&
+		    !pukPin.check(buffer, pukOff, (byte)8)) {
+			ISOException.throwIt((short)(
+			    (short)0x63C0 | pin.getTriesRemaining()));
+			return;
+		}
+
+		newPinOff = (short)(pukOff + 8);
+		for (idx = newPinOff; idx < (short)(newPinOff + 6); ++idx) {
+			if (buffer[idx] < (byte)0x30 ||
+			    buffer[idx] > (byte)0x39) {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+		}
+		for (; idx < (short)(newPinOff + 8); ++idx) {
+			if (buffer[idx] != (byte)0xFF && (
+			    buffer[idx] < (byte)0x30 ||
+			    buffer[idx] > (byte)0x39)) {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+		}
+		pin.update(buffer, newPinOff, (byte)8);
+		pin.resetAndUnblock();
 	}
 
 	private void
