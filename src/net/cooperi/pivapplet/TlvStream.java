@@ -236,7 +236,7 @@ public class TlvStream {
 	{
 		final byte[] buf = target[0] == null ?
 		    APDU.getCurrentAPDUBuffer() : (byte[])target[0];
-		offPtrLenEnd[0] = Util.arrayCopy(
+		offPtrLenEnd[0] = Util.arrayCopyNonAtomic(
 		    data, off, buf, offPtrLenEnd[0], len);
 		return (offPtrLenEnd[0]);
 	}
@@ -268,15 +268,15 @@ public class TlvStream {
 		final short len;
 		switch (buf[off]) {
 		case (byte)0x00:
-			len = (short)(offPtrLenEnd[0] - off - 1);
+			len = (short)(offPtrLenEnd[0] - (short)(off + 1));
 			buf[off] = (byte)len;
 			break;
 		case (byte)0x81:
-			len = (short)(offPtrLenEnd[0] - off - 2);
+			len = (short)(offPtrLenEnd[0] - (short)(off + 2));
 			buf[(short)(off + 1)] = (byte)len;
 			break;
 		case (byte)0x82:
-			len = (short)(offPtrLenEnd[0] - off - 3);
+			len = (short)(offPtrLenEnd[0] - (short)(off + 3));
 			Util.setShort(buf, (short)(off + 1), len);
 			break;
 		}
