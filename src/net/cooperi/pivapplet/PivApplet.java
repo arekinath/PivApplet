@@ -73,8 +73,8 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
 
-	private static final short RAM_BUF_SIZE = (short)1024;
-	private static final short MAX_CERT_SIZE = (short)900;
+	private static final short RAM_BUF_SIZE = (short)1200;
+	private static final short MAX_CERT_SIZE = (short)1100;
 
 	private static final boolean USE_EXT_LEN = false;
 	private static final byte RBSTAT_SEND_LEN = (byte)0;
@@ -144,7 +144,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
 
 		ramBuf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE,
-		    JCSystem.CLEAR_ON_DESELECT);
+		    JCSystem.CLEAR_ON_RESET);
 		rbStat = JCSystem.makeTransientShortArray((short)4,
 		    JCSystem.CLEAR_ON_DESELECT);
 		challenge = JCSystem.makeTransientByteArray((short)16,
