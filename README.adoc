@@ -1,0 +1,115 @@
+:toc: left
+:source-highlighter: pygments
+:doctype: book
+:idprefix:
+:docinfo:
+
+# PivApplet
+
+## About
+
+This is an attempt at making a PIV (NIST SP 800-73-4) compatible JavaCard
+applet. Current target is JavaCard 2.2.2, with 2-3k of transient memory.
+
+## Current status
+
+What works:
+
+ * OpenSC, MacOS (`piv.tokend` for login), Windows PIV
+ * RSA-1024 and -2048 key generation on card, signing
+ * PINs and change of PIN, PUK reset
+ * Some https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
+   YubiKeyPIV-compatible extensions] are implemented and working:
+    - PIN policy
+    - Version indicator (we pretend to be a YK4)
+
+What doesn't work:
+
+ * ECDSA (probably not fixable without JavaCard 3.0.5 or proprietary APIs)
+ * Yubikey extensions (TODO):
+   - Set management key
+   - Import asymmetric key
+   - Reset after PUK blocked
+
+## Installing
+
+The pre-built `.cap` files for each release can be found on the
+https://github.com/arekinath/pivapplet/releases[project release page].
+
+You can use the
+https://github.com/martinpaljak/GlobalPlatformPro[Global Platform] command-line
+tool (`gp`) to upload the applet to your JavaCard:
+
+-----
+$ gp -install PivApplet.cap
+CAP loaded
+-----
+
+Now you have a PIV card ready to initialise. It's easiest to do the
+initialisation with the
+https://developers.yubico.com/yubico-piv-tool/[`yubico-piv-tool`]:
+
+-----
+$ yubico-piv-tool -r '' -a list-readers
+Alcor Micro AU9560 00 00
+Yubico Yubikey 4 OTP+U2F+CCID 01 00
+
+$ yubico-piv-tool -r Alcor -a generate -s 9e > pubkey-9e.pem
+Successfully generated a new private key.
+
+$ yubico-piv-tool -r Alcor -a selfsign-certificate -s 9e \
+    -S '/CN=test' < pubkey-9e.pem > cert-9e.pem
+Successfully generated a new self signed certificate.
+
+$ yubico-piv-tool -r Alcor -a import-certificate -s 9e < cert-9e.pem
+Successfully imported a new certificate.
+-----
+
+Now your PIV token is set up with a self-signed Card Authentication (`9e`)
+key. You can generate keys and certificates in the other slots in a similar
+fashion (remember that most other slots default to requiring a PIN entry,
+which you have to do with `-a verify-pin -a selfsign-certificate ...` when
+using `yubico-piv-tool`).
+
+Sample output of `yubico-piv-tool -a status`:
+
+-----
+CHUID:	301900000000000000000000000000000000000000000000000000341047132924dfd1f7581290d383781dc81a350832303530303130313e00fe00
+CCC:	f015a000000116ff02b8907468b1e6d143231c5c7c452df10121f20121f300f400f50110f600f700fa00fb00fc00fd00fe00
+Slot 9e:
+	Algorithm:	RSA2048
+	Subject DN:	CN=test
+	Issuer DN:	CN=test
+	Fingerprint:	acbc68b8ec8a25432a296801e4deb375a14b4d78f35016f8729a7c481040eb9a
+	Not Before:	Jun 19 05:33:06 2017 GMT
+	Not After:	Jun 19 05:33:06 2018 GMT
+PIN tries left:	5
+-----
+
+## Default admin key & PINs
+
+Default PIN:: `123456`
+Default PUK:: `12345678`
+Default card administration (`9B`) key:: `01 02 03 04 05 06 07 08 01 02 03 04 05 06 07 08 ...`
+
+(This is the default used by Yubikeys, so that the `yubico-piv-tool` will
+work with PivApplet.)
+
+## Building the project
+
+We use https://github.com/martinpaljak/ant-javacard[ant-javacard] for builds.
+
+-----
+$ git clone https://github.com/arekinath/PivApplet
+...
+
+$ cd PivApplet
+$ git submodule init && git submodule update
+...
+
+$ export JC_HOME=/path/to/jckit-2.2.2
+$ ant
+-----
+
+The capfile will be output in the `./bin` directory, along with the `.class`
+files (which can be used with jCardSim).
