@@ -285,7 +285,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		buffer[len++] = (byte)0x00;
 		buffer[len++] = (byte)0x00;
 
-		len = le > len ? len : le;
+		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
 		apdu.sendBytes((short)0, len);
 	}
@@ -335,7 +335,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		len = tlv.pop();
 
-		len = le > len ? len : le;
+		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
 		apdu.sendBytes((short)0, len);
 	}
@@ -375,7 +375,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		short le = apdu.setOutgoing();
 
 		short toSend = len;
-		if (toSend > le)
+		if (le > 0 && toSend > le)
 			toSend = le;
 		if (toSend > (short)0xFF)
 			toSend = (short)0xFF;
@@ -412,7 +412,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		final short le = apdu.setOutgoing();
 
 		short toSend = len;
-		if (toSend > le)
+		if (le > 0 && toSend > le)
 			toSend = le;
 		if (toSend > (short)0xFF)
 			toSend = (short)0xFF;
@@ -821,7 +821,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			len = tlv.pop();
 
-			len = le > len ? len : le;
+			len = le > 0 ? (le > len ? len : le) : len;
 			apdu.setOutgoingLength(len);
 			apdu.sendBytes((short)0, len);
 			break;
@@ -849,7 +849,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			len = tlv.pop();
 
-			len = le > len ? len : le;
+			len = le > 0 ? (le > len ? len : le) : len;
 			apdu.setOutgoingLength(len);
 			apdu.sendBytes((short)0, len);
 			break;
@@ -1304,7 +1304,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			len = tlv.pop();
 
-			len = le > len ? len : le;
+			len = le > 0 ? (le > len ? len : le) : len;
 			apdu.setOutgoingLength(len);
 			apdu.sendBytes((short)0, len);
 			return;
@@ -1338,7 +1338,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			len = tlv.pop();
 
-			len = le > len ? len : le;
+			len = le > 0 ? (le > len ? len : le) : len;
 			apdu.setOutgoingLength(len);
 			apdu.sendBytes((short)0, len);
 			return;
@@ -1361,7 +1361,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			len = tlv.pop();
 
-			len = le > len ? len : le;
+			len = le > 0 ? (le > len ? len : le) : len;
 			apdu.setOutgoingLength(len);
 			apdu.sendBytes((short)0, len);
 			return;
@@ -1430,7 +1430,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		len = tlv.pop();
 
-		len = le > len ? len : le;
+		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
 		apdu.sendBytes((short)0, len);
 	}
