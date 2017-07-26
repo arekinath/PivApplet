@@ -359,7 +359,9 @@ public class PivApplet extends Applet implements ExtendedLength
 			recvLen = apdu.receiveBytes(cdata);
 		}
 
-		if (apdu.isCommandChainingCLA()) {
+		final byte chainBit =
+		    (byte)(buffer[ISO7816.OFFSET_CLA] & (byte)0x10);
+		if (chainBit != 0) {
 			ISOException.throwIt(ISO7816.SW_NO_ERROR);
 			return ((short)0);
 		}
