@@ -23,6 +23,7 @@ import javacard.security.ECPublicKey;
 import javacard.security.DESKey;
 import javacard.security.Key;
 import javacard.security.KeyBuilder;
+import javacard.security.KeyAgreement;
 import javacard.security.KeyPair;
 import javacard.security.PrivateKey;
 import javacard.security.PublicKey;
@@ -85,8 +86,8 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
 
-	private static final short RAM_BUF_SIZE = (short)1200;
-	private static final short MAX_CERT_SIZE = (short)1100;
+	private static final short RAM_BUF_SIZE = (short)1000;
+	private static final short MAX_CERT_SIZE = (short)900;
 
 	private static final boolean USE_EXT_LEN = false;
 	private static final byte RBSTAT_SEND_REM = (byte)0;
@@ -112,6 +113,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	private Cipher rsaPkcs1 = null;
 	private Signature ecdsaP256Sha = null;
 	private Signature ecdsaP256Sha256 = null;
+	private KeyAgreement ecdh = null;
 
 	private PivSlot slot9a = null, slot9b = null, slot9c = null,
 	    slot9d = null, slot9e = null;
@@ -144,6 +146,8 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte TAG_CERT_9D = (byte)0x0B;
 	private static final byte TAG_CERT_9E = (byte)0x01;
 
+	private static final byte ALG_EC_SVDP_DH_PLAIN = (byte)3;
+
 	public static void
 	install(byte[] info, short off, byte len)
 	{
@@ -171,6 +175,25 @@ public class PivApplet extends Applet implements ExtendedLength
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
+		}
+
+		try {
+			ecdh = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN,
+			    false);
+		} catch (CryptoException ex) {
+			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
+				throw (ex);
+		}
+
+		if (ecdh == null) {
+			try {
+				ecdh = KeyAgreement.getInstance(
+				    KeyAgreement.ALG_EC_SVDP_DH, false);
+			} catch (CryptoException ex) {
+				if (ex.getReason() !=
+				    CryptoException.NO_SUCH_ALGORITHM)
+					throw (ex);
+			}
 		}
 
 		ramBuf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE,
@@ -588,13 +611,13 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		tlv.setTarget(ramBuf);
 
-		tlv.push64k((short)0x7F49);
-
 		switch (alg) {
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
 			RSAPublicKey rpubk =
 			    (RSAPublicKey)slot.asym.getPublic();
+
+			tlv.push64k((short)0x7F49);
 
 			tlv.push64k((byte)0x81);
 			cLen = rpubk.getModulus(ramBuf, tlv.offset());
@@ -610,7 +633,9 @@ public class PivApplet extends Applet implements ExtendedLength
 			ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
 
-			tlv.push256((byte)0x86);
+			tlv.push((short)0x7F49);
+
+			tlv.push((byte)0x86);
 			cLen = epubk.getW(ramBuf, tlv.offset());
 			tlv.write(cLen);
 			tlv.pop();
@@ -857,6 +882,42 @@ public class PivApplet extends Applet implements ExtendedLength
 			break;
 
 		case GA_TAG_RESPONSE:
+			if (tag == GA_TAG_EXP) {
+				if (alg != PIV_ALG_ECCP256) {
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				if ((key == (byte)0x9b &&
+				    !slot9b.flags[PivSlot.F_UNLOCKED]) ||
+				    !slot.checkPin(pivPin)) {
+					ISOException.throwIt(
+					    ISO7816.
+					    SW_SECURITY_STATUS_NOT_SATISFIED);
+					return;
+				}
+				cLen = 256;
+				if ((short)(RAM_BUF_SIZE - cLen) < lc) {
+					ISOException.throwIt(ISO7816.SW_FILE_FULL);
+					return;
+				}
+				lc = (short)(RAM_BUF_SIZE - cLen);
+
+				ecdh.init(slot.asym.getPrivate());
+				cLen = ecdh.generateSecret(ramBuf, tlv.offset(),
+				    tlv.tagLength(), ramBuf, lc);
+
+				tlv.setTarget(ramBuf);
+
+				tlv.push((byte)0x7C, (short)(cLen + 4));
+				tlv.push(GA_TAG_RESPONSE, cLen);
+				tlv.write(ramBuf, lc, cLen);
+				tlv.pop();
+
+				len = tlv.pop();
+				sendRamBuf(apdu, len);
+				break;
+			}
 			if (tag != GA_TAG_CHALLENGE) {
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;

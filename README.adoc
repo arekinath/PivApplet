@@ -17,6 +17,8 @@ What works:
 
  * OpenSC, MacOS (`piv.tokend` for login), Windows PIV
  * RSA-1024 and -2048 key generation on card, signing
+ * EC P-256 key generation (but no ECDSA)
+ * EC Diffie-Hellman on P-256 (not working on all cards)
  * PINs and change of PIN, PUK reset
  * Some https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
    YubiKeyPIV-compatible extensions] are implemented and working:
@@ -26,6 +28,8 @@ What works:
 What doesn't work:
 
  * ECDSA (probably not fixable without JavaCard 3.0.5 or proprietary APIs)
+   * There is partial support for it in the code, but it will double-hash
+     input data unless client software explicitly works around it.
  * Yubikey extensions (TODO):
    - Set management key
    - Import asymmetric key
