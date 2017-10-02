@@ -28,7 +28,7 @@ What works:
 What doesn't work:
 
  * ECDSA (probably not fixable without JavaCard 3.0.5 or proprietary APIs)
-   * There is partial support for it in the code, but it will double-hash
+   - There is partial support for it in the code, but it will double-hash
      input data unless client software explicitly works around it.
  * Yubikey extensions (TODO):
    - Set management key
