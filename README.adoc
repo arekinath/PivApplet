@@ -131,6 +131,10 @@ This extension, naturally, will not work with existing PIV host software that is
 not aware of it. It is supported as a workaround for users who are ok with
 customising their host software who really want to use ECDSA.
 
+Support for these new algorithms is advertised in the `0xAC` (supported
+algorithms) tag in the response to `INS_SELECT`. Client software may detect
+it there to decide whether to attempt use hash-on-card or not.
+
 ## Building the project
 
 We use https://github.com/martinpaljak/ant-javacard[ant-javacard] for builds.
