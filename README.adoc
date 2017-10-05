@@ -18,7 +18,7 @@ What works:
  * OpenSC, MacOS (`piv.tokend` for login), Windows PIV
  * RSA-1024 and -2048 key generation on card, signing
  * EC P-256 key generation (but no ECDSA)
- * EC Diffie-Hellman on P-256 (not working on all cards)
+ * EC Diffie-Hellman on P-256
  * PINs and change of PIN, PUK reset
  * Some https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
    YubiKeyPIV-compatible extensions] are implemented and working:
@@ -28,8 +28,8 @@ What works:
 What doesn't work:
 
  * ECDSA (probably not fixable without JavaCard 3.0.5 or proprietary APIs)
-   - There is partial support for it in the code, but it will double-hash
-     input data unless client software explicitly works around it.
+   - There is partial support for it in the code, but it will not work without
+     a client that is specifically aware of the double-hashing issue.
  * Yubikey extensions (TODO):
    - Set management key
    - Import asymmetric key
@@ -98,6 +98,38 @@ Default card administration (`9B`) key:: `01 02 03 04 05 06 07 08 01 02 03 04 05
 
 (This is the default used by Yubikeys, so that the `yubico-piv-tool` will
 work with PivApplet.)
+
+## ECDSA hash-on-card extension
+
+The applet supports an extension for doing ECDSA with hash-on-card, which client
+software will have to specifically add support for if it wants to use ECDSA
+signing with this applet.
+
+Unfortunately, regular PIV ECDSA signing is not possible with the JavaCard
+standard crypto functions, which only support a single operation that combines
+hashing and signing. The current PIV standard demands that the data to be
+signed is hashed by the host, and then the hash is sent to the card.
+
+In addition to the algorithm ID `0x11` for `ECCP256`, we introduce two new IDs,
+`ECCP256-SHA1` (`0xF0`) and `ECCP256-SHA256` (`0xF1`). For key generation the
+client should continue to use `ECCP256` (as well as for ECDH), but for signing
+one of the two new algorithm IDs must be used (`ECCP256` will be rejected).
+
+These two new algorithms are "hash-on-card" algorithms, where the "challenge"
+tag sent by the host to the card should include the full data to be signed
+without any hashing applied. The card will hash the data and return the
+signature in the same was as a normal EC signature.
+
+For example, to sign the payload `"foo\n"` with the Card Authentication (9e)
+key, with SHA-256, the host could send the following APDU:
+
+```
+00 87 F1 9E 0A 7C 08 82 00 81 04 66 6F 6F 0A
+```
+
+This extension, naturally, will not work with existing PIV host software that is
+not aware of it. It is supported as a workaround for users who are ok with
+customising their host software who really want to use ECDSA.
 
 ## Building the project
 

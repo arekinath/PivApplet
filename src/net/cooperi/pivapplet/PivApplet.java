@@ -128,6 +128,9 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte PIV_ALG_ECCP256 = (byte)0x11;
 	private static final byte PIV_ALG_ECCP384 = (byte)0x14;
 
+	private static final byte PIV_ALG_ECCP256_SHA1 = (byte)0xf0;
+	private static final byte PIV_ALG_ECCP256_SHA256 = (byte)0xf1;
+
 	private static final byte GA_TAG_WITNESS = (byte)0x80;
 	private static final byte GA_TAG_CHALLENGE = (byte)0x81;
 	private static final byte GA_TAG_RESPONSE = (byte)0x82;
@@ -350,6 +353,16 @@ public class PivApplet extends Applet implements ExtendedLength
 		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
 			tlv.push((byte)0x80);
 			tlv.writeByte(PIV_ALG_ECCP256);
+			tlv.pop();
+		}
+		if (ecdsaP256Sha != null) {
+			tlv.push((byte)0x80);
+			tlv.writeByte(PIV_ALG_ECCP256_SHA1);
+			tlv.pop();
+		}
+		if (ecdsaP256Sha256 != null) {
+			tlv.push((byte)0x80);
+			tlv.writeByte(PIV_ALG_ECCP256_SHA256);
 			tlv.pop();
 		}
 		tlv.push((byte)0x06);
@@ -734,6 +747,15 @@ public class PivApplet extends Applet implements ExtendedLength
 			}
 			len = (short)0;
 			break;
+		case PIV_ALG_ECCP256_SHA1:
+		case PIV_ALG_ECCP256_SHA256:
+			if (slot.asymAlg != PIV_ALG_ECCP256 ||
+			    slot.asym == null) {
+				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+				return;
+			}
+			len = (short)0;
+			break;
 		default:
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
@@ -931,6 +953,8 @@ public class PivApplet extends Applet implements ExtendedLength
 				cLen = (short)512;
 				break;
 			case PIV_ALG_ECCP256:
+			case PIV_ALG_ECCP256_SHA1:
+			case PIV_ALG_ECCP256_SHA256:
 				cLen = (short)256;
 				break;
 			}
@@ -962,15 +986,13 @@ public class PivApplet extends Applet implements ExtendedLength
 				cLen = ci.doFinal(ramBuf, tlv.offset(),
 				    tlv.tagLength(), ramBuf, lc);
 
-			} else if (slot.asymAlg == alg) {
+			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
 				switch (alg) {
-				case PIV_ALG_ECCP256:
-					if (tlv.tagLength() > 20 &&
-					    ecdsaP256Sha256 != null) {
-						si = ecdsaP256Sha256;
-					} else {
-						si = ecdsaP256Sha;
-					}
+				case PIV_ALG_ECCP256_SHA256:
+					si = ecdsaP256Sha256;
+					break;
+				case PIV_ALG_ECCP256_SHA1:
+					si = ecdsaP256Sha;
 					break;
 				default:
 					ISOException.throwIt(
@@ -983,6 +1005,9 @@ public class PivApplet extends Applet implements ExtendedLength
 				cLen = si.sign(ramBuf,
 				    tlv.offset(), tlv.tagLength(),
 				    ramBuf, lc);
+			} else {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
 			}
 
 			tlv.setTarget(ramBuf);
