@@ -150,6 +150,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte TAG_CERT_9E = (byte)0x01;
 
 	private static final byte ALG_EC_SVDP_DH_PLAIN = (byte)3;
+	private static final byte ALG_EC_SVDP_DHC_PLAIN = (byte)4;
 
 	public static void
 	install(byte[] info, short off, byte len)
@@ -191,7 +192,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		if (ecdh == null) {
 			try {
 				ecdh = KeyAgreement.getInstance(
-				    KeyAgreement.ALG_EC_SVDP_DH, false);
+				    ALG_EC_SVDP_DHC_PLAIN, false);
 			} catch (CryptoException ex) {
 				if (ex.getReason() !=
 				    CryptoException.NO_SUCH_ALGORITHM)
@@ -908,6 +909,11 @@ public class PivApplet extends Applet implements ExtendedLength
 				if (alg != PIV_ALG_ECCP256) {
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				if (ecdh == null) {
+					ISOException.throwIt(
+					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
 				}
 				if ((key == (byte)0x9b &&
