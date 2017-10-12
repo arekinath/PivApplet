@@ -28,6 +28,7 @@ public class PivSlot {
 	public byte[] cert = null;
 	public short certLen = 0;
 	public boolean certGzip = false;
+	public boolean imported = false;
 
 	public byte pinPolicy = P_NEVER;
 

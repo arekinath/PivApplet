@@ -25,6 +25,7 @@ What works:
     - PIN policy
     - Version indicator (we pretend to be a YK4)
     - Set management key
+    - Import asymmetric key
 
 What doesn't work:
 
@@ -32,7 +33,6 @@ What doesn't work:
    - There is partial support for it in the code, but it will not work without
      a client that is specifically aware of the double-hashing issue.
  * Yubikey extensions (TODO):
-   - Import asymmetric key
    - Reset after PUK blocked
 
 ## Installing

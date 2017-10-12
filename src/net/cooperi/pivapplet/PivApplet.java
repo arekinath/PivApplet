@@ -551,6 +551,19 @@ public class PivApplet extends Applet implements ExtendedLength
 			case (byte)0x81:
 				tlv.skip();
 				break;
+			case (byte)0xab:
+				if (tlv.tagLength() != 1) {
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				tag = tlv.readByte();
+				if (tag != (byte)0x00 && tag != (byte)0x01) {
+					ISOException.throwIt(
+					    ISO7816.SW_FUNC_NOT_SUPPORTED);
+					return;
+				}
+				break;
 			case (byte)0xaa:
 				if (tlv.tagLength() != 1) {
 					ISOException.throwIt(
@@ -578,7 +591,7 @@ public class PivApplet extends Applet implements ExtendedLength
 					break;
 				default:
 					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
+					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
 				}
 			}
@@ -631,6 +644,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		slot.asym.genKeyPair();
+		slot.imported = false;
 
 		tlv.setTarget(ramBuf);
 
@@ -675,7 +689,252 @@ public class PivApplet extends Applet implements ExtendedLength
 	private void
 	processImportAsym(APDU apdu)
 	{
-		ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+		final byte[] buffer = apdu.getBuffer();
+		final byte key, alg;
+		short lc, len;
+		byte tag;
+		final PivSlot slot;
+
+		alg = buffer[ISO7816.OFFSET_P1];
+		key = buffer[ISO7816.OFFSET_P2];
+
+		if (!slot9b.flags[PivSlot.F_UNLOCKED]) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		lc = recvRamBuf(apdu);
+		if (lc == (short)0) {
+			return;
+		}
+
+		tlv.setTarget(ramBuf, (short)0, lc);
+
+		switch (key) {
+		case (byte)0x9a:
+			slot = slot9a;
+			break;
+		case (byte)0x9b:
+			slot = slot9b;
+			break;
+		case (byte)0x9c:
+			slot = slot9c;
+			break;
+		case (byte)0x9d:
+			slot = slot9d;
+			break;
+		case (byte)0x9e:
+			slot = slot9e;
+			break;
+		default:
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		switch (alg) {
+		case PIV_ALG_RSA1024:
+			if (slot.asym == null || slot.asymAlg != alg) {
+				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
+				    (short)1024);
+			}
+			slot.asymAlg = alg;
+			break;
+		case PIV_ALG_RSA2048:
+			if (slot.asym == null || slot.asymAlg != alg) {
+				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
+				    (short)2048);
+			}
+			slot.asymAlg = alg;
+			break;
+		case PIV_ALG_ECCP256:
+			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+			ECPrivateKey ecPriv;
+			ECPublicKey ecPub;
+			if (slot.asym == null || slot.asymAlg != alg) {
+				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PRIVATE,
+				    (short)256, false);
+				ecPub = (ECPublicKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PUBLIC,
+				    (short)256, false);
+				slot.asym = new KeyPair(
+				    (PublicKey)ecPub, (PrivateKey)ecPriv);
+				ECParams.setCurveParameters(ecPriv);
+				ECParams.setCurveParameters(ecPub);
+			}
+			slot.asymAlg = alg;
+			break;
+		default:
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		slot.imported = true;
+
+		switch (alg) {
+		case PIV_ALG_RSA1024:
+		case PIV_ALG_RSA2048:
+			final RSAPublicKey rpubk =
+			    (RSAPublicKey)slot.asym.getPublic();
+			final RSAPrivateCrtKey rprivk =
+			    (RSAPrivateCrtKey)slot.asym.getPrivate();
+			rpubk.clearKey();
+
+			while (!tlv.atEnd()) {
+				tag = tlv.readTag();
+				switch (tag) {
+				case (byte)0x01:
+					rprivk.setP(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0x02:
+					rprivk.setQ(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0x03:
+					rprivk.setDP1(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0x04:
+					rprivk.setDQ1(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0x05:
+					rprivk.setPQ(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0xaa:
+					if (tlv.tagLength() != 1) {
+						ISOException.throwIt(
+						    ISO7816.SW_WRONG_DATA);
+						return;
+					}
+					tag = tlv.readByte();
+					switch (tag) {
+					case PivSlot.P_DEFAULT:
+						if (key == (byte)0x9e) {
+							slot.pinPolicy =
+							    PivSlot.P_NEVER;
+						} else if (key == (byte)0x9c) {
+							slot.pinPolicy =
+							    PivSlot.P_ALWAYS;
+						} else {
+							slot.pinPolicy =
+							    PivSlot.P_ONCE;
+						}
+						break;
+					case PivSlot.P_NEVER:
+					case PivSlot.P_ONCE:
+					case PivSlot.P_ALWAYS:
+						slot.pinPolicy = tag;
+						break;
+					default:
+						ISOException.throwIt(
+						    ISO7816.
+						    SW_FUNC_NOT_SUPPORTED);
+						return;
+					}
+					break;
+				case (byte)0xab:
+					if (tlv.tagLength() != 1) {
+						ISOException.throwIt(
+						    ISO7816.SW_WRONG_DATA);
+						return;
+					}
+					final byte touchPolicy = tlv.readByte();
+					if (touchPolicy != (byte)0x00 &&
+					    touchPolicy != (byte)0x01) {
+						ISOException.throwIt(
+						    ISO7816.
+						    SW_FUNC_NOT_SUPPORTED);
+						return;
+					}
+					break;
+				default:
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				tlv.skip();
+			}
+			break;
+		case PIV_ALG_ECCP256:
+			final ECPublicKey epubk =
+			    (ECPublicKey)slot.asym.getPublic();
+			final ECPrivateKey eprivk =
+			    (ECPrivateKey)slot.asym.getPrivate();
+			epubk.clearKey();
+
+			while (!tlv.atEnd()) {
+				tag = tlv.readTag();
+				switch (tag) {
+				case (byte)0x06:
+					eprivk.setS(ramBuf, tlv.offset(),
+					    tlv.tagLength());
+					break;
+				case (byte)0xaa:
+					if (tlv.tagLength() != 1) {
+						ISOException.throwIt(
+						    ISO7816.SW_WRONG_DATA);
+						return;
+					}
+					tag = tlv.readByte();
+					switch (tag) {
+					case PivSlot.P_DEFAULT:
+						if (key == (byte)0x9e) {
+							slot.pinPolicy =
+							    PivSlot.P_NEVER;
+						} else if (key == (byte)0x9c) {
+							slot.pinPolicy =
+							    PivSlot.P_ALWAYS;
+						} else {
+							slot.pinPolicy =
+							    PivSlot.P_ONCE;
+						}
+						break;
+					case PivSlot.P_NEVER:
+					case PivSlot.P_ONCE:
+					case PivSlot.P_ALWAYS:
+						slot.pinPolicy = tag;
+						break;
+					default:
+						ISOException.throwIt(
+						    ISO7816.
+						    SW_FUNC_NOT_SUPPORTED);
+						return;
+					}
+					break;
+				case (byte)0xab:
+					if (tlv.tagLength() != 1) {
+						ISOException.throwIt(
+						    ISO7816.SW_WRONG_DATA);
+						return;
+					}
+					final byte touchPolicy = tlv.readByte();
+					if (touchPolicy != (byte)0x00 &&
+					    touchPolicy != (byte)0x01) {
+						ISOException.throwIt(
+						    ISO7816.
+						    SW_FUNC_NOT_SUPPORTED);
+						return;
+					}
+					break;
+				default:
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				tlv.skip();
+			}
+			break;
+		default:
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
 	}
 
 	private void
@@ -1211,6 +1470,16 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		if (!pin.check(buffer, pinOff, (byte)8)) {
+			if (pukPin.getTriesRemaining() == 0) {
+				if (slot9a.asym != null)
+					slot9a.asym.getPrivate().clearKey();
+				if (slot9c.asym != null)
+					slot9c.asym.getPrivate().clearKey();
+				if (slot9d.asym != null)
+					slot9d.asym.getPrivate().clearKey();
+				if (slot9e.asym != null)
+					slot9e.asym.getPrivate().clearKey();
+			}
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
 			return;
