@@ -681,7 +681,44 @@ public class PivApplet extends Applet implements ExtendedLength
 	private void
 	processSetMgmtKey(APDU apdu)
 	{
-		ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+		final byte[] buffer = apdu.getBuffer();
+		short lc, len, off;
+
+		if (buffer[ISO7816.OFFSET_P1] != (byte)0xFF ||
+		    buffer[ISO7816.OFFSET_P2] != (byte)0xFF) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (!slot9b.flags[PivSlot.F_UNLOCKED]) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		lc = apdu.setIncomingAndReceive();
+		if (lc != apdu.getIncomingLength()) {
+			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			return;
+		}
+		if (lc != 27) {
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		off = apdu.getOffsetCdata();
+		final byte alg = buffer[off++];
+		final byte key = buffer[off++];
+		final byte keyLen = buffer[off++];
+
+		if (alg != PIV_ALG_3DES || key != (byte)0x9b ||
+		    keyLen != (byte)24) {
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		final DESKey dk = (DESKey)slot9b.sym;
+		dk.setKey(buffer, off);
 	}
 
 	private void
@@ -1222,7 +1259,6 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		if (!pin.isValidated() &&
-		    !slot9b.flags[PivSlot.F_UNLOCKED] &&
 		    !pin.check(buffer, oldPinOff, (byte)8)) {
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
@@ -1282,7 +1318,6 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		if (!pukPin.isValidated() &&
-		    !slot9b.flags[PivSlot.F_UNLOCKED] &&
 		    !pukPin.check(buffer, pukOff, (byte)8)) {
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
