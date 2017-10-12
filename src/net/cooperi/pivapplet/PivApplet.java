@@ -114,6 +114,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	private Signature ecdsaP256Sha = null;
 	private Signature ecdsaP256Sha256 = null;
 	private KeyAgreement ecdh = null;
+	private KeyAgreement ecdhSha = null;
 
 	private PivSlot slot9a = null, slot9b = null, slot9c = null,
 	    slot9d = null, slot9e = null;
@@ -198,6 +199,14 @@ public class PivApplet extends Applet implements ExtendedLength
 				    CryptoException.NO_SUCH_ALGORITHM)
 					throw (ex);
 			}
+		}
+
+		try {
+			ecdhSha = KeyAgreement.getInstance(
+			    KeyAgreement.ALG_EC_SVDP_DH, false);
+		} catch (CryptoException ex) {
+			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
+				throw (ex);
 		}
 
 		ramBuf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE,
@@ -906,12 +915,18 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		case GA_TAG_RESPONSE:
 			if (tag == GA_TAG_EXP) {
-				if (alg != PIV_ALG_ECCP256) {
+				KeyAgreement ag;
+
+				if (alg == PIV_ALG_ECCP256_SHA1) {
+					ag = ecdhSha;
+				} else if (alg == PIV_ALG_ECCP256) {
+					ag = ecdh;
+				} else {
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
 					return;
 				}
-				if (ecdh == null) {
+				if (ag == null) {
 					ISOException.throwIt(
 					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
@@ -931,8 +946,8 @@ public class PivApplet extends Applet implements ExtendedLength
 				}
 				lc = (short)(RAM_BUF_SIZE - cLen);
 
-				ecdh.init(slot.asym.getPrivate());
-				cLen = ecdh.generateSecret(ramBuf, tlv.offset(),
+				ag.init(slot.asym.getPrivate());
+				cLen = ag.generateSecret(ramBuf, tlv.offset(),
 				    tlv.tagLength(), ramBuf, lc);
 
 				tlv.setTarget(ramBuf);
