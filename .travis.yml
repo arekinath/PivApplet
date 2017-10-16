@@ -1,0 +1,21 @@
+language: java
+
+env:
+   - JC_HOME=$TRAVIS_BUILD_DIR/jckit/java_card_kit-2_2_2
+
+before_script:
+   - git submodule init
+   - git submodule update
+   - mkdir jckit
+   - cd jckit
+   - "[ -f java_card_kit-2_2_2-linux.zip ] || curl -L http://download.oracle.com/otn-pub/java/java_card_kit/2.2.2/java_card_kit-2_2_2-linux.zip -o java_card_kit-2_2_2-linux.zip --cookie oraclelicense=accept-securebackup-cookie"
+   - unzip java_card_kit-2_2_2-linux.zip
+   - cd java_card_kit-2_2_2/
+   - unzip java_card_kit-2_2_2-rr-bin-linux-do.zip
+   - CLASSPATH=$CLASSPATH:$JC_HOME/lib
+   - cd $TRAVIS_BUILD_DIR 
+script: ant dist
+
+cache:
+   files:
+      - $TRAVIS_BUILD_DIR/java_card_kit-2_2_2-linux.zip
