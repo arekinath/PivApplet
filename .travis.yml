@@ -12,7 +12,6 @@ before_script:
    - unzip java_card_kit-2_2_2-linux.zip
    - cd java_card_kit-2_2_2/
    - unzip java_card_kit-2_2_2-rr-bin-linux-do.zip
-   - CLASSPATH=$CLASSPATH:$JC_HOME/lib
    - cd $TRAVIS_BUILD_DIR 
 script: ant dist
 
