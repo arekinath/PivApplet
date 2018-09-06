@@ -1370,6 +1370,12 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
+		if (!slot9b.flags[PivSlot.F_UNLOCKED]) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
 		if (tlv.tagLength() == (short)3 &&
 		    tlv.readByte() == (byte)0x5F &&
 		    tlv.readByte() == (byte)0xC1) {
