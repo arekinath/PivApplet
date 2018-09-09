@@ -86,16 +86,23 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
 
-	private static final short RAM_BUF_SIZE = (short)1000;
-	private static final short MAX_CERT_SIZE = (short)900;
+	/* ASSERT: tag.end() was called but tag has bytes left. */
+	protected static final short SW_TAG_END_ASSERT = (short)0x6F60;
+	protected static final short SW_DATA_END_ASSERT = (short)0x6F63;
+	/* ASSERT: SGList#startReserve() ran out of Buffers. */
+	protected static final short SW_RESERVE_FAILURE = (short)0x6F61;
+	/* ASSERT: SGList#skip */
+	protected static final short SW_SKIPPED_OVER_WPTR = (short)0x6F62;
+	protected static final short SW_BAD_REWRITE = (short)0x6F64;
 
 	private static final boolean USE_EXT_LEN = false;
-	private static final byte RBSTAT_SEND_REM = (byte)0;
-	private static final byte RBSTAT_SEND_OFF = (byte)1;
-	private static final byte RBSTAT_RECV_OFF = (byte)2;
 
-	private byte[] ramBuf = null;
-	private short[] rbStat = null;
+	private SGList incoming = null;
+	private SGList outgoing = null;
+	private APDUStream apduStream = null;
+	private Buffer tempBuf = null;
+	private Buffer outBuf = null;
+
 	private byte[] challenge = null;
 	private byte[] iv = null;
 
@@ -103,7 +110,9 @@ public class PivApplet extends Applet implements ExtendedLength
 	private byte[] cardId = null;
 	private byte[] fascn = null;
 	private byte[] expiry = null;
-	private TlvStream tlv = null;
+
+	private TlvReader tlv = null;
+	private TlvWriter wtlv = null;
 
 	private OwnerPIN pivPin = null;
 	private OwnerPIN pukPin = null;
@@ -209,10 +218,6 @@ public class PivApplet extends Applet implements ExtendedLength
 				throw (ex);
 		}
 
-		ramBuf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE,
-		    JCSystem.CLEAR_ON_RESET);
-		rbStat = JCSystem.makeTransientShortArray((short)3,
-		    JCSystem.CLEAR_ON_DESELECT);
 		challenge = JCSystem.makeTransientByteArray((short)16,
 		    JCSystem.CLEAR_ON_DESELECT);
 		iv = JCSystem.makeTransientByteArray((short)16,
@@ -235,7 +240,15 @@ public class PivApplet extends Applet implements ExtendedLength
 		slot9d = new PivSlot();
 		slot9e = new PivSlot();
 
-		tlv = new TlvStream();
+		incoming = new SGList();
+		outgoing = new SGList();
+		apduStream = new APDUStream();
+
+		tempBuf = new Buffer();
+		outBuf = new Buffer();
+
+		tlv = new TlvReader();
+		wtlv = new TlvWriter(incoming);
 
 		/* Initialize the admin key */
 		DESKey dk = (DESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_DES,
@@ -329,98 +342,72 @@ public class PivApplet extends Applet implements ExtendedLength
 	private void
 	sendSelectResponse(APDU apdu)
 	{
-		short len, le;
-		le = apdu.setOutgoing();
+		outgoing.reset();
+		wtlv.start(outgoing);
 
-		tlv.setTarget(null);
+		wtlv.push((byte)0x61);
 
-		tlv.push((byte)0x61);
+		wtlv.push((byte)0x4F);
+		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		wtlv.pop();
 
-		tlv.push((byte)0x4F);
-		tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-		tlv.pop();
+		wtlv.push((byte)0x79);
+		wtlv.push((byte)0x4F);
+		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		wtlv.pop();
+		wtlv.pop();
 
-		tlv.push((byte)0x79);
-		tlv.push((byte)0x4F);
-		tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-		tlv.pop();
-		tlv.pop();
+		wtlv.push((byte)0x50);
+		wtlv.write(APP_NAME, (short)0, (short)APP_NAME.length);
+		wtlv.pop();
 
-		tlv.push((byte)0x50);
-		tlv.write(APP_NAME, (short)0, (short)APP_NAME.length);
-		tlv.pop();
-
-		tlv.push((byte)0xAC);
-		tlv.push((byte)0x80);
-		tlv.writeByte(PIV_ALG_3DES);
-		tlv.pop();
-		tlv.push((byte)0x80);
-		tlv.writeByte(PIV_ALG_RSA1024);
-		tlv.pop();
-		tlv.push((byte)0x80);
-		tlv.writeByte(PIV_ALG_RSA2048);
-		tlv.pop();
+		wtlv.push((byte)0xAC);
+		wtlv.push((byte)0x80);
+		wtlv.writeByte(PIV_ALG_3DES);
+		wtlv.pop();
+		wtlv.push((byte)0x80);
+		wtlv.writeByte(PIV_ALG_RSA1024);
+		wtlv.pop();
+		wtlv.push((byte)0x80);
+		wtlv.writeByte(PIV_ALG_RSA2048);
+		wtlv.pop();
 		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_ECCP256);
-			tlv.pop();
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP256);
+			wtlv.pop();
 		}
 		if (ecdsaP256Sha != null) {
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_ECCP256_SHA1);
-			tlv.pop();
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
+			wtlv.pop();
 		}
 		if (ecdsaP256Sha256 != null) {
-			tlv.push((byte)0x80);
-			tlv.writeByte(PIV_ALG_ECCP256_SHA256);
-			tlv.pop();
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP256_SHA256);
+			wtlv.pop();
 		}
-		tlv.push((byte)0x06);
-		tlv.pop();
-		tlv.pop();
+		wtlv.push((byte)0x06);
+		wtlv.pop();
+		wtlv.pop();
 
-		len = tlv.pop();
+		wtlv.pop();
+		wtlv.end();
 
-		len = le > 0 ? (le > len ? len : le) : len;
-		apdu.setOutgoingLength(len);
-		apdu.sendBytes((short)0, len);
-	}
-
-	private short
-	recvRamBuf(APDU apdu)
-	{
-		final byte[] buffer = apdu.getBuffer();
-		short recvLen = apdu.setIncomingAndReceive();
-		final short cdata = apdu.getOffsetCdata();
-
-		while (recvLen > 0) {
-			if (RAM_BUF_SIZE <
-			    (short)(rbStat[RBSTAT_RECV_OFF] + recvLen)) {
-				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-				return ((short)0);
-			}
-			Util.arrayCopyNonAtomic(buffer, cdata,
-			    ramBuf, rbStat[RBSTAT_RECV_OFF], recvLen);
-			rbStat[RBSTAT_RECV_OFF] += recvLen;
-			recvLen = apdu.receiveBytes(cdata);
-		}
-
-		final byte chainBit =
-		    (byte)(buffer[ISO7816.OFFSET_CLA] & (byte)0x10);
-		if (chainBit != 0) {
-			ISOException.throwIt(ISO7816.SW_NO_ERROR);
-			return ((short)0);
-		}
-
-		recvLen = rbStat[RBSTAT_RECV_OFF];
-		rbStat[RBSTAT_RECV_OFF] = (short)0;
-		return (recvLen);
+		sendOutgoing(apdu);
 	}
 
 	private void
-	sendRamBuf(APDU apdu, short len)
+	sendOutgoing(APDU apdu)
 	{
-		short le = apdu.setOutgoing();
+		final short len = outgoing.available();
+		if (len < 1) {
+			ISOException.throwIt(
+			    ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+			return;
+		}
+
+		final short le = apdu.setOutgoing();
+		final byte[] buf = apdu.getBuffer();
 
 		short toSend = len;
 		if (le > 0 && toSend > le)
@@ -433,10 +420,8 @@ public class PivApplet extends Applet implements ExtendedLength
 		    rem > (short)0xFF ? (byte)0xFF : (byte)rem;
 
 		apdu.setOutgoingLength(toSend);
-		apdu.sendBytesLong(ramBuf, (short)0, toSend);
-
-		rbStat[RBSTAT_SEND_REM] = rem;
-		rbStat[RBSTAT_SEND_OFF] = toSend;
+		outgoing.read(buf, (short)0, toSend);
+		apdu.sendBytes((short)0, toSend);
 
 		if (rem > 0) {
 			ISOException.throwIt(
@@ -450,38 +435,33 @@ public class PivApplet extends Applet implements ExtendedLength
 	private void
 	continueResponse(APDU apdu)
 	{
-		final short len = rbStat[RBSTAT_SEND_REM];
-		if (len < 1) {
-			ISOException.throwIt(
-			    ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-			return;
+		sendOutgoing(apdu);
+	}
+
+	private boolean
+	receiveChain(APDU apdu)
+	{
+		final byte[] buf = apdu.getBuffer();
+		final byte chainBit =
+		    (byte)(buf[ISO7816.OFFSET_CLA] & (byte)0x10);
+
+		if (incoming.atEnd())
+			incoming.reset();
+
+		short recvLen = apdu.setIncomingAndReceive();
+		final short cdata = apdu.getOffsetCdata();
+
+		while (recvLen > 0) {
+			incoming.write(buf, cdata, recvLen);
+			recvLen = apdu.receiveBytes(cdata);
 		}
 
-		final short le = apdu.setOutgoing();
-
-		short toSend = len;
-		if (le > 0 && toSend > le)
-			toSend = le;
-		if (toSend > (short)0xFF)
-			toSend = (short)0xFF;
-
-		final short rem = (short)(len - toSend);
-		final byte wantNext =
-		    rem > (short)0xFF ? (byte)0xFF : (byte)rem;
-
-		apdu.setOutgoingLength(toSend);
-		apdu.sendBytesLong(ramBuf, rbStat[RBSTAT_SEND_OFF], toSend);
-
-		rbStat[RBSTAT_SEND_REM] = rem;
-		rbStat[RBSTAT_SEND_OFF] += toSend;
-
-		if (rem > 0) {
-			ISOException.throwIt(
-			    (short)(ISO7816.SW_BYTES_REMAINING_00 |
-			    ((short)wantNext & (short)0x00ff)));
-		} else {
+		if (chainBit != 0) {
 			ISOException.throwIt(ISO7816.SW_NO_ERROR);
+			return (false);
 		}
+
+		return (true);
 	}
 
 	private void
@@ -530,7 +510,8 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
-		tlv.setTarget(null, apdu.getOffsetCdata(), lc);
+		apduStream.reset(apdu.getOffsetCdata(), lc);
+		tlv.start(apduStream);
 
 		if (tlv.readTag() != (byte)0xAC) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -547,6 +528,7 @@ public class PivApplet extends Applet implements ExtendedLength
 					return;
 				}
 				alg = tlv.readByte();
+				tlv.end();
 				break;
 			case (byte)0x81:
 				tlv.skip();
@@ -563,6 +545,7 @@ public class PivApplet extends Applet implements ExtendedLength
 					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
 				}
+				tlv.end();
 				break;
 			case (byte)0xaa:
 				if (tlv.tagLength() != 1) {
@@ -594,8 +577,12 @@ public class PivApplet extends Applet implements ExtendedLength
 					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
 				}
+				tlv.end();
+				break;
 			}
 		}
+
+		tlv.end();
 
 		if (alg == (byte)0xFF) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -646,7 +633,8 @@ public class PivApplet extends Applet implements ExtendedLength
 		slot.asym.genKeyPair();
 		slot.imported = false;
 
-		tlv.setTarget(ramBuf);
+		outgoing.reset();
+		wtlv.start(outgoing);
 
 		switch (alg) {
 		case PIV_ALG_RSA1024:
@@ -654,36 +642,40 @@ public class PivApplet extends Applet implements ExtendedLength
 			RSAPublicKey rpubk =
 			    (RSAPublicKey)slot.asym.getPublic();
 
-			tlv.push64k((short)0x7F49);
+			wtlv.push64k((short)0x7F49);
 
-			tlv.push64k((byte)0x81);
-			cLen = rpubk.getModulus(ramBuf, tlv.offset());
-			tlv.write(cLen);
-			tlv.pop();
+			wtlv.push64k((byte)0x81);
+			wtlv.startReserve((short)257, tempBuf);
+			cLen = rpubk.getModulus(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(cLen);
+			wtlv.pop();
 
-			tlv.push((byte)0x82);
-			cLen = rpubk.getExponent(ramBuf, tlv.offset());
-			tlv.write(cLen);
-			tlv.pop();
+			wtlv.push((byte)0x82);
+			wtlv.startReserve((short)9, tempBuf);
+			cLen = rpubk.getExponent(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(cLen);
+			wtlv.pop();
 			break;
 		case PIV_ALG_ECCP256:
 			ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
 
-			tlv.push((short)0x7F49);
+			wtlv.push((short)0x7F49);
 
-			tlv.push((byte)0x86);
-			cLen = epubk.getW(ramBuf, tlv.offset());
-			tlv.write(cLen);
-			tlv.pop();
+			wtlv.push((byte)0x86);
+			wtlv.startReserve((short)33, tempBuf);
+			cLen = epubk.getW(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(cLen);
+			wtlv.pop();
 			break;
 		default:
 			return;
 		}
 
-		len = tlv.pop();
+		wtlv.pop();
+		wtlv.end();
 
-		sendRamBuf(apdu, len);
+		sendOutgoing(apdu);
 	}
 
 	private void
@@ -704,12 +696,10 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
-		lc = recvRamBuf(apdu);
-		if (lc == (short)0) {
+		if (!receiveChain(apdu))
 			return;
-		}
 
-		tlv.setTarget(ramBuf, (short)0, lc);
+		tlv.start(incoming);
 
 		switch (key) {
 		case (byte)0x9a:
@@ -728,6 +718,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			slot = slot9e;
 			break;
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
@@ -749,6 +740,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			break;
 		case PIV_ALG_ECCP256:
 			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
@@ -769,6 +761,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			slot.asymAlg = alg;
 			break;
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
@@ -788,32 +781,44 @@ public class PivApplet extends Applet implements ExtendedLength
 				tag = tlv.readTag();
 				switch (tag) {
 				case (byte)0x01:
-					rprivk.setP(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					rprivk.setP(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0x02:
-					rprivk.setQ(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					rprivk.setQ(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0x03:
-					rprivk.setDP1(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					rprivk.setDP1(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0x04:
-					rprivk.setDQ1(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					rprivk.setDQ1(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0x05:
-					rprivk.setPQ(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					rprivk.setPQ(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0xaa:
 					if (tlv.tagLength() != 1) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);
 						return;
 					}
 					tag = tlv.readByte();
+					tlv.end();
 					switch (tag) {
 					case PivSlot.P_DEFAULT:
 						if (key == (byte)0x9e) {
@@ -833,6 +838,7 @@ public class PivApplet extends Applet implements ExtendedLength
 						slot.pinPolicy = tag;
 						break;
 					default:
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.
 						    SW_FUNC_NOT_SUPPORTED);
@@ -841,13 +847,16 @@ public class PivApplet extends Applet implements ExtendedLength
 					break;
 				case (byte)0xab:
 					if (tlv.tagLength() != 1) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);
 						return;
 					}
 					final byte touchPolicy = tlv.readByte();
+					tlv.end();
 					if (touchPolicy != (byte)0x00 &&
 					    touchPolicy != (byte)0x01) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.
 						    SW_FUNC_NOT_SUPPORTED);
@@ -855,11 +864,11 @@ public class PivApplet extends Applet implements ExtendedLength
 					}
 					break;
 				default:
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
 					return;
 				}
-				tlv.skip();
 			}
 			break;
 		case PIV_ALG_ECCP256:
@@ -873,16 +882,20 @@ public class PivApplet extends Applet implements ExtendedLength
 				tag = tlv.readTag();
 				switch (tag) {
 				case (byte)0x06:
-					eprivk.setS(ramBuf, tlv.offset(),
-					    tlv.tagLength());
+					tlv.read(tempBuf, tlv.tagLength());
+					eprivk.setS(tempBuf.data,
+					    tempBuf.offset(), tlv.tagLength());
+					tlv.end();
 					break;
 				case (byte)0xaa:
 					if (tlv.tagLength() != 1) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);
 						return;
 					}
 					tag = tlv.readByte();
+					tlv.end();
 					switch (tag) {
 					case PivSlot.P_DEFAULT:
 						if (key == (byte)0x9e) {
@@ -902,6 +915,7 @@ public class PivApplet extends Applet implements ExtendedLength
 						slot.pinPolicy = tag;
 						break;
 					default:
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.
 						    SW_FUNC_NOT_SUPPORTED);
@@ -910,13 +924,16 @@ public class PivApplet extends Applet implements ExtendedLength
 					break;
 				case (byte)0xab:
 					if (tlv.tagLength() != 1) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);
 						return;
 					}
 					final byte touchPolicy = tlv.readByte();
+					tlv.end();
 					if (touchPolicy != (byte)0x00 &&
 					    touchPolicy != (byte)0x01) {
+						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.
 						    SW_FUNC_NOT_SUPPORTED);
@@ -924,17 +941,20 @@ public class PivApplet extends Applet implements ExtendedLength
 					}
 					break;
 				default:
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
 					return;
 				}
-				tlv.skip();
 			}
 			break;
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
+
+		tlv.finish();
 	}
 
 	private void
@@ -994,14 +1014,13 @@ public class PivApplet extends Applet implements ExtendedLength
 		alg = buffer[ISO7816.OFFSET_P1];
 		key = buffer[ISO7816.OFFSET_P2];
 
-		lc = recvRamBuf(apdu);
-		if (lc == (short)0) {
+		if (!receiveChain(apdu))
 			return;
-		}
 
-		tlv.setTarget(ramBuf, (short)0, lc);
+		tlv.start(incoming);
 
 		if (tlv.readTag() != (byte)0x7C) {
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
@@ -1023,6 +1042,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			slot = slot9e;
 			break;
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
@@ -1032,6 +1052,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		case PIV_ALG_3DES:
 			alg = PIV_ALG_3DES;
 			if (slot.symAlg != alg || slot.sym == null) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
@@ -1039,6 +1060,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			break;
 		case PIV_ALG_AES128:
 			if (slot.symAlg != alg || slot.sym == null) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
@@ -1048,6 +1070,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		case PIV_ALG_RSA2048:
 		case PIV_ALG_ECCP256:
 			if (slot.asymAlg != alg || slot.asym == null) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
@@ -1057,12 +1080,14 @@ public class PivApplet extends Applet implements ExtendedLength
 		case PIV_ALG_ECCP256_SHA256:
 			if (slot.asymAlg != PIV_ALG_ECCP256 ||
 			    slot.asym == null) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
 			len = (short)0;
 			break;
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
@@ -1094,7 +1119,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		/* Now rewind, let's figure out what to do */
-		tlv.setTarget(ramBuf, (short)0, lc);
+		tlv.rewind();
 		tlv.readTag(); /* The 0x7C outer tag */
 
 		tag = tlv.readTag();
@@ -1106,6 +1131,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		if (wanted == (byte)0) {
 			if (key != (byte)0x9b) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
@@ -1114,22 +1140,29 @@ public class PivApplet extends Applet implements ExtendedLength
 			if (tag == GA_TAG_RESPONSE) {
 				ci.init(slot.sym, Cipher.MODE_DECRYPT, iv,
 				    (short)0, len);
-				cLen = ci.doFinal(ramBuf, tlv.offset(), len,
-				    ramBuf, lc);
+				tlv.read(tempBuf, len);
+				incoming.startReserve(len, outBuf);
+				cLen = ci.doFinal(tempBuf.data, tempBuf.offset(),
+				    len, outBuf.data, outBuf.offset());
 
-				if (tlv.tagLength() == cLen) {
-					comp = Util.arrayCompare(ramBuf, lc,
-					    challenge, (short)0, cLen);
+				if (tlv.tagLength() == 0) {
+					comp = Util.arrayCompare(outBuf.data,
+					    outBuf.offset(), challenge,
+					    (short)0, cLen);
+					tlv.end();
 				}
 
 			} else if (tag == GA_TAG_WITNESS) {
 				if (tlv.tagLength() == len) {
-					comp = Util.arrayCompare(ramBuf,
-					    tlv.offset(), challenge,
+					tlv.read(tempBuf, len);
+					comp = Util.arrayCompare(tempBuf.data,
+					    tempBuf.offset(), challenge,
 					    (short)0, len);
+					tlv.end();
 				}
 
 			} else {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
@@ -1137,12 +1170,14 @@ public class PivApplet extends Applet implements ExtendedLength
 			if (comp == 0) {
 				slot.flags[PivSlot.F_UNLOCKED] = true;
 			} else {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
 
-			tlv.skip();
 			if (tlv.atEnd()) {
+				tlv.end();
+				tlv.finish();
 				ISOException.throwIt(ISO7816.SW_NO_ERROR);
 				return;
 			}
@@ -1154,6 +1189,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		switch (wanted) {
 		case GA_TAG_CHALLENGE:
 			if (key != (byte)0x9b) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
@@ -1161,52 +1197,53 @@ public class PivApplet extends Applet implements ExtendedLength
 			 * The host is asking us for a challenge value
 			 * for them to encrypt and return in a RESPONSE
 			 */
-			le = apdu.setOutgoing();
-			tlv.setTarget(null);
+			outgoing.reset();
+			wtlv.start(outgoing);
 
 			randData.generateData(challenge, (short)0, len);
 			/*for (byte i = 0; i < (byte)len; ++i)
 				challenge[i] = (byte)(i + 1);*/
 
-			tlv.push((byte)0x7C);
+			wtlv.push((byte)0x7C);
 
-			tlv.push(GA_TAG_CHALLENGE);
-			tlv.write(challenge, (short)0, len);
-			tlv.pop();
+			wtlv.push(GA_TAG_CHALLENGE);
+			wtlv.write(challenge, (short)0, len);
+			wtlv.pop();
 
-			len = tlv.pop();
+			wtlv.pop();
 
-			len = le > 0 ? (le > len ? len : le) : len;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			wtlv.end();
+			sendOutgoing(apdu);
 			break;
 
 		case GA_TAG_WITNESS:
 			if (key != (byte)0x9b) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 				return;
 			}
-			le = apdu.setOutgoing();
-			tlv.setTarget(null);
+
+			outgoing.reset();
+			wtlv.start(outgoing);
 
 			randData.generateData(challenge, (short)0, len);
+			/*for (byte i = 0; i < (byte)len; ++i)
+				challenge[i] = (byte)(i + 1);*/
 
-			tlv.push((byte)0x7C);
+			wtlv.push((byte)0x7C);
 
-			tlv.push(GA_TAG_WITNESS);
-
+			wtlv.push(GA_TAG_WITNESS);
 			ci.init(slot.sym, Cipher.MODE_ENCRYPT, iv,
 			    (short)0, len);
-			cLen = ci.doFinal(challenge, (short)0, len, buffer,
-			    tlv.offset());
-			tlv.write(cLen);
-			tlv.pop();
+			wtlv.startReserve(len, tempBuf);
+			cLen = ci.doFinal(challenge, (short)0, len,
+			    tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(cLen);
+			wtlv.pop();
 
-			len = tlv.pop();
-
-			len = le > 0 ? (le > len ? len : le) : len;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			wtlv.pop();
+			wtlv.end();
+			sendOutgoing(apdu);
 			break;
 
 		case GA_TAG_RESPONSE:
@@ -1218,11 +1255,13 @@ public class PivApplet extends Applet implements ExtendedLength
 				} else if (alg == PIV_ALG_ECCP256) {
 					ag = ecdh;
 				} else {
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
 					return;
 				}
 				if (ag == null) {
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.SW_FUNC_NOT_SUPPORTED);
 					return;
@@ -1230,37 +1269,41 @@ public class PivApplet extends Applet implements ExtendedLength
 				if ((key == (byte)0x9b &&
 				    !slot9b.flags[PivSlot.F_UNLOCKED]) ||
 				    !slot.checkPin(pivPin)) {
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.
 					    SW_SECURITY_STATUS_NOT_SATISFIED);
 					return;
 				}
-				cLen = 256;
-				if ((short)(RAM_BUF_SIZE - cLen) < lc) {
-					ISOException.throwIt(ISO7816.SW_FILE_FULL);
-					return;
-				}
-				lc = (short)(RAM_BUF_SIZE - cLen);
+				incoming.steal((short)257, outBuf);
+
+				cLen = tlv.read(tempBuf, tlv.tagLength());
+				tlv.end();
 
 				ag.init(slot.asym.getPrivate());
-				cLen = ag.generateSecret(ramBuf, tlv.offset(),
-				    tlv.tagLength(), ramBuf, lc);
+				cLen = ag.generateSecret(tempBuf.data,
+				    tempBuf.offset(), cLen,
+				    outBuf.data, outBuf.offset());
 
-				tlv.setTarget(ramBuf);
+				outgoing.reset();
+				wtlv.start(outgoing);
 
-				tlv.push((byte)0x7C, (short)(cLen + 4));
-				tlv.push(GA_TAG_RESPONSE, cLen);
-				tlv.write(ramBuf, lc, cLen);
-				tlv.pop();
+				wtlv.push((byte)0x7C, (short)(cLen + 4));
+				wtlv.push(GA_TAG_RESPONSE, cLen);
+				wtlv.write(outBuf.data, outBuf.offset(), cLen);
+				wtlv.pop();
 
-				len = tlv.pop();
-				sendRamBuf(apdu, len);
+				wtlv.pop();
+				wtlv.end();
+				sendOutgoing(apdu);
 				break;
 			}
 			if (tag != GA_TAG_CHALLENGE) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
+			final short sLen = tlv.tagLength();
 			cLen = tlv.tagLength();
 			switch (alg) {
 			case PIV_ALG_RSA1024:
@@ -1275,15 +1318,12 @@ public class PivApplet extends Applet implements ExtendedLength
 				cLen = (short)256;
 				break;
 			}
-			if ((short)(RAM_BUF_SIZE - cLen) < lc) {
-				ISOException.throwIt(ISO7816.SW_FILE_FULL);
-				return;
-			}
-			lc = (short)(RAM_BUF_SIZE - cLen);
+			incoming.steal(cLen, outBuf);
 
 			if ((key == (byte)0x9b &&
 			    !slot9b.flags[PivSlot.F_UNLOCKED]) ||
 			    !slot.checkPin(pivPin)) {
+				tlv.abort();
 				ISOException.throwIt(
 				    ISO7816.
 				    SW_SECURITY_STATUS_NOT_SATISFIED);
@@ -1291,17 +1331,23 @@ public class PivApplet extends Applet implements ExtendedLength
 			}
 
 			if (slot.symAlg == alg) {
+				tlv.read(tempBuf, sLen);
+				tlv.end();
 				ci.init(slot.sym, Cipher.MODE_ENCRYPT,
 				    iv, (short)0, len);
-				cLen = ci.doFinal(ramBuf, tlv.offset(),
-				    tlv.tagLength(), ramBuf, lc);
+				cLen = ci.doFinal(tempBuf.data,
+				    tempBuf.offset(), sLen,
+				    outBuf.data, outBuf.offset());
 
 			} else if (slot.asymAlg == alg && (
 			    alg == PIV_ALG_RSA1024 || alg == PIV_ALG_RSA2048)) {
+				tlv.read(tempBuf, sLen);
+				tlv.end();
 				ci.init(slot.asym.getPrivate(),
 				    Cipher.MODE_ENCRYPT);
-				cLen = ci.doFinal(ramBuf, tlv.offset(),
-				    tlv.tagLength(), ramBuf, lc);
+				cLen = ci.doFinal(tempBuf.data,
+				    tempBuf.offset(), sLen,
+				    outBuf.data, outBuf.offset());
 
 			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
 				switch (alg) {
@@ -1312,6 +1358,7 @@ public class PivApplet extends Applet implements ExtendedLength
 					si = ecdsaP256Sha;
 					break;
 				default:
+					tlv.abort();
 					ISOException.throwIt(
 					    ISO7816.SW_WRONG_DATA);
 					return;
@@ -1319,29 +1366,44 @@ public class PivApplet extends Applet implements ExtendedLength
 
 				si.init(slot.asym.getPrivate(),
 				    Signature.MODE_SIGN);
-				cLen = si.sign(ramBuf,
-				    tlv.offset(), tlv.tagLength(),
-				    ramBuf, lc);
+				short done = (short)0;
+				while (done < sLen) {
+					final short read =
+					    tlv.readPartial(tempBuf, sLen);
+					si.update(tempBuf.data, tempBuf.offset(),
+					    read);
+					done += read;
+				}
+				tlv.end();
+				cLen = si.sign(null, (short)0, (short)0,
+				    outBuf.data, outBuf.offset());
 			} else {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
 
-			tlv.setTarget(ramBuf);
+			outgoing.reset();
+			wtlv.start(outgoing);
 
-			tlv.push((byte)0x7C, (short)(cLen + 4));
-			tlv.push(GA_TAG_RESPONSE, cLen);
-			tlv.write(ramBuf, lc, cLen);
-			tlv.pop();
+			wtlv.push((byte)0x7C, (short)(cLen + 4));
+			wtlv.push(GA_TAG_RESPONSE, cLen);
+			wtlv.write(outBuf.data, outBuf.offset(), cLen);
+			wtlv.pop();
 
-			len = tlv.pop();
-			sendRamBuf(apdu, len);
+			wtlv.pop();
+			wtlv.end();
+			sendOutgoing(apdu);
 			break;
 
 		default:
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
+
+		tlv.end();
+		tlv.finish();
 	}
 
 	private void
@@ -1358,19 +1420,18 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
-		lc = recvRamBuf(apdu);
-		if (lc == (short)0) {
+		if (!receiveChain(apdu))
 			return;
-		}
-
-		tlv.setTarget(ramBuf, (short)0, lc);
+		tlv.start(incoming);
 
 		if (tlv.readTag() != (byte)0x5C) {
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
 
 		if (!slot9b.flags[PivSlot.F_UNLOCKED]) {
+			tlv.abort();
 			ISOException.throwIt(
 			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
 			return;
@@ -1381,6 +1442,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		    tlv.readByte() == (byte)0xC1) {
 			/* A regular PIV object, so let's go find the data. */
 			tag = tlv.readByte();
+			tlv.end();
 			switch (tag) {
 			case TAG_CHUID:
 				ISOException.throwIt(
@@ -1399,35 +1461,47 @@ public class PivApplet extends Applet implements ExtendedLength
 				slot = slot9e;
 				break;
 			default:
+				tlv.abort();
 				ISOException.throwIt(
 				    ISO7816.SW_FUNC_NOT_SUPPORTED);
 				return;
 			}
 
 			if (tlv.readTag() != (byte)0x53) {
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
 
-			if (slot.cert == null)
-				slot.cert = new byte[MAX_CERT_SIZE];
 			slot.certGzip = false;
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
 				if (tag == (byte)0x70) {
+					final short len = tlv.tagLength();
+					if (slot.cert == null)
+						slot.cert = new byte[len];
+					if (slot.cert.length < len) {
+						slot.cert = new byte[len];
+						JCSystem.requestObjectDeletion();
+					}
 					slot.certLen = tlv.read(slot.cert,
-					    (short)0, MAX_CERT_SIZE);
+					    (short)0, len);
+					tlv.end();
 				} else if (tag == (byte)0x71) {
 					if (tlv.readByte() == (byte)0x01)
 						slot.certGzip = true;
-					tlv.skip();
+					tlv.end();
 				} else {
 					tlv.skip();
 				}
 			}
 
+			tlv.end();
+			tlv.finish();
+
 		} else {
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
 		}
 	}
@@ -1638,10 +1712,12 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
-		tlv.setTarget(null, apdu.getOffsetCdata(), lc);
+		apduStream.reset(apdu.getOffsetCdata(), lc);
+		tlv.start(apduStream);
 
 		tag = tlv.readTag();
 		if (tag != (byte)0x5C) {
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
@@ -1651,138 +1727,136 @@ public class PivApplet extends Applet implements ExtendedLength
 		    tlv.readByte() == (byte)0xC1) {
 			/* A regular PIV object, so let's go find the data. */
 			tag = tlv.readByte();
+			tlv.end();
 			sendPIVObject(apdu, tag);
 
 		} else if (tlv.tagLength() == 1 &&
 		    tlv.readByte() == (byte)0x7E) {
+			tlv.end();
 			/* The special discovery object */
 			sendDiscoveryObject(apdu);
 
 		} else {
+			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
 		}
+
+		tlv.finish();
 	}
 
 	private void
 	sendPIVObject(APDU apdu, byte tag)
 	{
-		short le, len;
 		PivSlot slot;
 
 		switch (tag) {
 		case TAG_CARDCAP:
-			le = apdu.setOutgoing();
-			tlv.setTarget(null);
+			outgoing.reset();
+			wtlv.start(outgoing);
 
-			tlv.push((byte)0x53);
+			wtlv.push((byte)0x53);
 
 			/* Card Identifier */
-			tlv.push((byte)0xF0);
-			tlv.write(cardId, (short)0, (short)cardId.length);
-			tlv.pop();
+			wtlv.push((byte)0xF0);
+			wtlv.write(cardId, (short)0, (short)cardId.length);
+			wtlv.pop();
 
 			/* Container version number */
-			tlv.push((byte)0xF1);
-			tlv.writeByte((byte)0x21);
-			tlv.pop();
-			tlv.push((byte)0xF2);
-			tlv.writeByte((byte)0x21);
-			tlv.pop();
+			wtlv.push((byte)0xF1);
+			wtlv.writeByte((byte)0x21);
+			wtlv.pop();
+			wtlv.push((byte)0xF2);
+			wtlv.writeByte((byte)0x21);
+			wtlv.pop();
 
-			tlv.push((byte)0xF3);
-			tlv.pop();
+			wtlv.push((byte)0xF3);
+			wtlv.pop();
 
-			tlv.push((byte)0xF4);
-			tlv.pop();
+			wtlv.push((byte)0xF4);
+			wtlv.pop();
 
 			/* Data Model Number */
-			tlv.push((byte)0xF5);
-			tlv.writeByte((byte)0x10);
-			tlv.pop();
+			wtlv.push((byte)0xF5);
+			wtlv.writeByte((byte)0x10);
+			wtlv.pop();
 
-			tlv.push((byte)0xF6);
-			tlv.pop();
+			wtlv.push((byte)0xF6);
+			wtlv.pop();
 
-			tlv.push((byte)0xF7);
-			tlv.pop();
+			wtlv.push((byte)0xF7);
+			wtlv.pop();
 
-			tlv.push((byte)0xFA);
-			tlv.pop();
+			wtlv.push((byte)0xFA);
+			wtlv.pop();
 
-			tlv.push((byte)0xFB);
-			tlv.pop();
+			wtlv.push((byte)0xFB);
+			wtlv.pop();
 
-			tlv.push((byte)0xFC);
-			tlv.pop();
+			wtlv.push((byte)0xFC);
+			wtlv.pop();
 
-			tlv.push((byte)0xFD);
-			tlv.pop();
+			wtlv.push((byte)0xFD);
+			wtlv.pop();
 
-			tlv.push((byte)0xFE);
-			tlv.pop();
+			wtlv.push((byte)0xFE);
+			wtlv.pop();
 
-			len = tlv.pop();
-
-			len = le > 0 ? (le > len ? len : le) : len;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			wtlv.pop();
+			wtlv.end();
+			sendOutgoing(apdu);
 			return;
 		case TAG_CHUID:
-			le = apdu.setOutgoing();
-			tlv.setTarget(null);
+			outgoing.reset();
+			wtlv.start(outgoing);
 
-			tlv.push((byte)0x53);
+			wtlv.push((byte)0x53);
 
 			/* FASC-N identifier */
-			tlv.push((byte)0x30);
-			tlv.write(fascn, (short)0, (short)fascn.length);
-			tlv.pop();
+			wtlv.push((byte)0x30);
+			wtlv.write(fascn, (short)0, (short)fascn.length);
+			wtlv.pop();
 
 			/* Card GUID */
-			tlv.push((byte)0x34);
-			tlv.write(guid, (short)0, (short)guid.length);
-			tlv.pop();
+			wtlv.push((byte)0x34);
+			wtlv.write(guid, (short)0, (short)guid.length);
+			wtlv.pop();
 
 			/* Expiry date */
-			tlv.push((byte)0x35);
-			tlv.write(expiry, (short)0, (short)expiry.length);
-			tlv.pop();
+			wtlv.push((byte)0x35);
+			wtlv.write(expiry, (short)0, (short)expiry.length);
+			wtlv.pop();
 
 			/* Issuer signature */
-			tlv.push((byte)0x3E);
-			tlv.pop();
+			wtlv.push((byte)0x3E);
+			wtlv.pop();
 
-			tlv.push((byte)0xFE);
-			tlv.pop();
+			wtlv.push((byte)0xFE);
+			wtlv.pop();
 
-			len = tlv.pop();
-
-			len = le > 0 ? (le > len ? len : le) : len;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			wtlv.pop();
+			wtlv.end();
+			sendOutgoing(apdu);
 			return;
 		case TAG_KEYHIST:
-			le = apdu.setOutgoing();
-			tlv.setTarget(null);
+			outgoing.reset();
+			wtlv.start(outgoing);
 
-			tlv.push((byte)0x53);
+			wtlv.push((byte)0x53);
 
-			tlv.push((byte)0xC1);
-			tlv.writeByte((byte)0);
-			tlv.pop();
+			wtlv.push((byte)0xC1);
+			wtlv.writeByte((byte)0);
+			wtlv.pop();
 
-			tlv.push((byte)0xC2);
-			tlv.writeByte((byte)0);
-			tlv.pop();
+			wtlv.push((byte)0xC2);
+			wtlv.writeByte((byte)0);
+			wtlv.pop();
 
-			tlv.push((byte)0xFE);
-			tlv.pop();
+			wtlv.push((byte)0xFE);
+			wtlv.pop();
 
-			len = tlv.pop();
-
-			len = le > 0 ? (le > len ? len : le) : len;
-			apdu.setOutgoingLength(len);
-			apdu.sendBytes((short)0, len);
+			wtlv.pop();
+			wtlv.end();
+			sendOutgoing(apdu);
 			return;
 		case TAG_CERT_9A:
 			slot = slot9a;
@@ -1806,51 +1880,48 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
-		tlv.setTarget(ramBuf);
+		outgoing.reset();
+		wtlv.start(outgoing);
 
-		tlv.push((byte)0x53, (short)(slot.certLen + 10));
+		wtlv.push((byte)0x53, (short)(slot.certLen + 10));
 
-		tlv.push((byte)0x70, slot.certLen);
-		tlv.write(slot.cert, (short)0, slot.certLen);
-		tlv.pop();
+		wtlv.push((byte)0x70, slot.certLen);
+		wtlv.write(slot.cert, (short)0, slot.certLen);
+		wtlv.pop();
 
-		tlv.push((byte)0x71);
+		wtlv.push((byte)0x71);
 		if (slot9a.certGzip)
-			tlv.writeByte((byte)0x01);
+			wtlv.writeByte((byte)0x01);
 		else
-			tlv.writeByte((byte)0x00);
-		tlv.pop();
+			wtlv.writeByte((byte)0x00);
+		wtlv.pop();
 
-		len = tlv.pop();
-
-		sendRamBuf(apdu, len);
+		wtlv.pop();
+		wtlv.end();
+		sendOutgoing(apdu);
 	}
 
 	private void
 	sendDiscoveryObject(APDU apdu)
 	{
-		short le, len;
+		outgoing.reset();
+		wtlv.start(outgoing);
 
-		le = apdu.setOutgoing();
-		tlv.setTarget(null);
-
-		tlv.push((byte)0x7E);
+		wtlv.push((byte)0x7E);
 
 		/* AID */
-		tlv.push((byte)0x4F);
-		tlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-		tlv.pop();
+		wtlv.push((byte)0x4F);
+		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		wtlv.pop();
 
 		/* PIN policy */
-		tlv.push((short)0x5F2F);
-		tlv.writeByte((byte)0x40);	/* PIV pin only, no others */
-		tlv.writeByte((byte)0x00);	/* RFU, since no global PIN */
-		tlv.pop();
+		wtlv.push((short)0x5F2F);
+		wtlv.writeByte((byte)0x40);	/* PIV pin only, no others */
+		wtlv.writeByte((byte)0x00);	/* RFU, since no global PIN */
+		wtlv.pop();
 
-		len = tlv.pop();
-
-		len = le > 0 ? (le > len ? len : le) : len;
-		apdu.setOutgoingLength(len);
-		apdu.sendBytes((short)0, len);
+		wtlv.pop();
+		wtlv.end();
+		sendOutgoing(apdu);
 	}
 }
