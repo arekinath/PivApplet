@@ -86,6 +86,8 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
 
+	private static final byte INS_SG_DEBUG = (byte)0xe0;
+
 	/* ASSERT: tag.end() was called but tag has bytes left. */
 	protected static final short SW_TAG_END_ASSERT = (short)0x6F60;
 	protected static final short SW_DATA_END_ASSERT = (short)0x6F63;
@@ -314,6 +316,9 @@ public class PivApplet extends Applet implements ExtendedLength
 		case INS_SET_MGMT:
 			processSetMgmtKey(apdu);
 			break;
+		case INS_SG_DEBUG:
+			processSGDebug(apdu);
+			break;
 		case INS_GET_RESPONSE:
 			continueResponse(apdu);
 			break;
@@ -333,6 +338,38 @@ public class PivApplet extends Applet implements ExtendedLength
 		buffer[len++] = (byte)0x04;
 		buffer[len++] = (byte)0x00;
 		buffer[len++] = (byte)0x00;
+
+		len = le > 0 ? (le > len ? len : le) : len;
+		apdu.setOutgoingLength(len);
+		apdu.sendBytes((short)0, len);
+	}
+
+	private void
+	processSGDebug(APDU apdu)
+	{
+		short len = (short)0;
+		short i = (short)0;
+		final short le;
+		final byte[] buffer = apdu.getBuffer();
+
+		le = apdu.setOutgoing();
+		len = Util.setShort(buffer, len, incoming.state[SGList.WPTR_BUF]);
+		len = Util.setShort(buffer, len, incoming.state[SGList.WPTR_OFF]);
+		for (i = 0; i < SGList.MAX_BUFS; ++i) {
+			if (incoming.buffers[i].data == null)
+				break;
+			buffer[len++] = (byte)i;
+			if (incoming.buffers[i].isTransient)
+				buffer[len++] = (byte)1;
+			else
+				buffer[len++] = (byte)0;
+			len = Util.setShort(buffer, len,
+			    (short)incoming.buffers[0].data.length);
+			len = Util.setShort(buffer, len,
+			    incoming.buffers[0].state[Buffer.OFFSET]);
+			len = Util.setShort(buffer, len,
+			    incoming.buffers[0].state[Buffer.LEN]);
+		}
 
 		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
