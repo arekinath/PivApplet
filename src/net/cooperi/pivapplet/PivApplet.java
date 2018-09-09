@@ -364,11 +364,11 @@ public class PivApplet extends Applet implements ExtendedLength
 			else
 				buffer[len++] = (byte)0;
 			len = Util.setShort(buffer, len,
-			    (short)incoming.buffers[0].data.length);
+			    (short)incoming.buffers[i].data.length);
 			len = Util.setShort(buffer, len,
-			    incoming.buffers[0].state[Buffer.OFFSET]);
+			    incoming.buffers[i].state[Buffer.OFFSET]);
 			len = Util.setShort(buffer, len,
-			    incoming.buffers[0].state[Buffer.LEN]);
+			    incoming.buffers[i].state[Buffer.LEN]);
 		}
 
 		len = le > 0 ? (le > len ? len : le) : len;
