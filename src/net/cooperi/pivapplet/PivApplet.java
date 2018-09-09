@@ -816,35 +816,36 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
+				final short tlen = tlv.tagLength();
 				switch (tag) {
 				case (byte)0x01:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					rprivk.setP(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0x02:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					rprivk.setQ(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0x03:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					rprivk.setDP1(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0x04:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					rprivk.setDQ1(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0x05:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					rprivk.setPQ(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0xaa:
@@ -917,11 +918,12 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
+				final short tlen = tlv.tagLength();
 				switch (tag) {
 				case (byte)0x06:
-					tlv.read(tempBuf, tlv.tagLength());
+					tlv.read(tempBuf, tlen);
 					eprivk.setS(tempBuf.data,
-					    tempBuf.offset(), tlv.tagLength());
+					    tempBuf.offset(), tlen);
 					tlv.end();
 					break;
 				case (byte)0xaa:
