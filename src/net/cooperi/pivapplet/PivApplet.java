@@ -359,10 +359,12 @@ public class PivApplet extends Applet implements ExtendedLength
 			if (incoming.buffers[i].data == null)
 				break;
 			buffer[len++] = (byte)i;
+			byte status = (byte)0;
+			if (incoming.buffers[i].isDynamic)
+				status |= (byte)0x01;
 			if (incoming.buffers[i].isTransient)
-				buffer[len++] = (byte)1;
-			else
-				buffer[len++] = (byte)0;
+				status |= (byte)0x02;
+			buffer[len++] = status;
 			len = Util.setShort(buffer, len,
 			    (short)incoming.buffers[i].data.length);
 			len = Util.setShort(buffer, len,
@@ -1346,10 +1348,10 @@ public class PivApplet extends Applet implements ExtendedLength
 			cLen = tlv.tagLength();
 			switch (alg) {
 			case PIV_ALG_RSA1024:
-				cLen = (short)256;
+				cLen = (short)128;
 				break;
 			case PIV_ALG_RSA2048:
-				cLen = (short)512;
+				cLen = (short)256;
 				break;
 			case PIV_ALG_ECCP256:
 			case PIV_ALG_ECCP256_SHA1:
@@ -1513,6 +1515,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			}
 
 			slot.certGzip = false;
+			boolean needGC = false;
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
@@ -1522,7 +1525,7 @@ public class PivApplet extends Applet implements ExtendedLength
 						slot.cert = new byte[len];
 					if (slot.cert.length < len) {
 						slot.cert = new byte[len];
-						JCSystem.requestObjectDeletion();
+						needGC = true;
 					}
 					slot.certLen = tlv.read(slot.cert,
 					    (short)0, len);
@@ -1538,6 +1541,15 @@ public class PivApplet extends Applet implements ExtendedLength
 
 			tlv.end();
 			tlv.finish();
+
+			if (needGC && !incoming.gcBlewUp) {
+				try {
+					JCSystem.requestObjectDeletion();
+				} catch (Exception e) {
+					incoming.gcBlewUp = true;
+				}
+			}
+			incoming.cullNonTransient();
 
 		} else {
 			tlv.abort();

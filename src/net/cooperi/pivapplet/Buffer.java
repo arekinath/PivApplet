@@ -20,6 +20,7 @@ public class Buffer {
 	public static final byte LEN = 1;
 
 	public byte[] data;
+	public boolean isDynamic;
 	public boolean isTransient;
 	public short[] state;
 
@@ -28,6 +29,7 @@ public class Buffer {
 	{
 		state = JCSystem.makeTransientShortArray((short)(LEN + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
+		isDynamic = false;
 		isTransient = false;
 		state[OFFSET] = (short)0;
 		state[LEN] = (short)0;
@@ -48,7 +50,7 @@ public class Buffer {
 	public void
 	allocTransient()
 	{
-		if (isTransient && data != null) {
+		if (isDynamic && data != null) {
 			state[OFFSET] = (short)0;
 			state[LEN] = (short)data.length;
 			return;
@@ -56,13 +58,14 @@ public class Buffer {
 			return;
 		}
 
-		isTransient = true;
+		isDynamic = true;
 
 		try {
 			data = JCSystem.makeTransientByteArray(RAM_ALLOC_SIZE,
 			    JCSystem.CLEAR_ON_RESET);
 			state[OFFSET] = (short)0;
 			state[LEN] = (short)RAM_ALLOC_SIZE;
+			isTransient = true;
 			return;
 		} catch (SystemException ex) {
 			if (ex.getReason() != SystemException.NO_TRANSIENT_SPACE) {
@@ -75,6 +78,7 @@ public class Buffer {
 			    JCSystem.CLEAR_ON_RESET);
 			state[OFFSET] = (short)0;
 			state[LEN] = (short)RAM_ALLOC_SIZE_2;
+			isTransient = true;
 			return;
 		} catch (SystemException ex) {
 			if (ex.getReason() != SystemException.NO_TRANSIENT_SPACE) {
@@ -82,6 +86,7 @@ public class Buffer {
 			}
 		}
 
+		isTransient = false;
 		data = new byte[EEPROM_ALLOC_SIZE];
 		state[OFFSET] = (short)0;
 		state[LEN] = (short)EEPROM_ALLOC_SIZE;

@@ -29,6 +29,7 @@ public class SGList implements Readable {
 
 	public Buffer[] buffers;
 	public short[] state;
+	public boolean gcBlewUp = false;
 
 	public
 	SGList()
@@ -55,9 +56,35 @@ public class SGList implements Readable {
 
 		for (short i = 0; i < MAX_BUFS; ++i) {
 			final Buffer buf = buffers[i];
-			if (buf.isTransient && buf.data != null) {
+			if (buf.isDynamic && buf.data != null) {
 				buf.state[Buffer.OFFSET] = (short)0;
 				buf.state[Buffer.LEN] = (short)buf.data.length;
+			}
+		}
+	}
+
+	public void
+	cullNonTransient()
+	{
+		if (!JCSystem.isObjectDeletionSupported() || gcBlewUp)
+			return;
+		boolean dogc = false;
+		for (short i = 0; i < MAX_BUFS; ++i) {
+			final Buffer buf = buffers[i];
+			if (buf.isDynamic && !buf.isTransient &&
+			    buf.data != null) {
+				buf.data = null;
+				buf.isDynamic = false;
+				buf.isTransient = false;
+				buf.state[Buffer.LEN] = (short)0;
+				dogc = true;
+			}
+		}
+		if (dogc) {
+			try {
+				JCSystem.requestObjectDeletion();
+			} catch (Exception e) {
+				gcBlewUp = true;
 			}
 		}
 	}
@@ -149,7 +176,8 @@ public class SGList implements Readable {
 			into.data = curBuf.data;
 			into.state[Buffer.LEN] = len;
 			into.state[Buffer.OFFSET] = state[WPTR_OFF];
-			into.isTransient = false;
+			into.isDynamic = false;
+			into.isTransient = curBuf.isTransient;
 			return;
 		}
 		curBuf.state[Buffer.LEN] = state[WPTR_OFF];
@@ -167,7 +195,8 @@ public class SGList implements Readable {
 			into.data = buf.data;
 			into.state[Buffer.LEN] = len;
 			into.state[Buffer.OFFSET] = (short)0;
-			into.isTransient = false;
+			into.isDynamic = false;
+			into.isTransient = buf.isTransient;
 			return;
 		}
 
@@ -183,7 +212,8 @@ public class SGList implements Readable {
 			into.data = curBuf.data;
 			into.state[Buffer.LEN] = len;
 			into.state[Buffer.OFFSET] = state[WPTR_OFF];
-			into.isTransient = false;
+			into.isDynamic = false;
+			into.isTransient = curBuf.isTransient;
 			curBuf.state[Buffer.LEN] = state[WPTR_OFF];
 			state[WPTR_BUF]++;
 			state[WPTR_OFF] = (short)0;
@@ -204,7 +234,8 @@ public class SGList implements Readable {
 			into.data = buf.data;
 			into.state[Buffer.LEN] = len;
 			into.state[Buffer.OFFSET] = (short)0;
-			into.isTransient = false;
+			into.isDynamic = false;
+			into.isTransient = buf.isTransient;
 			buf.state[Buffer.OFFSET] += len;
 			buf.state[Buffer.LEN] -= len;
 			if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
@@ -239,7 +270,8 @@ public class SGList implements Readable {
 			into.data = curBuf.data;
 			into.state[Buffer.LEN] = len;
 			into.state[Buffer.OFFSET] = state[RPTR_OFF];
-			into.isTransient = false;
+			into.isDynamic = false;
+			into.isTransient = curBuf.isTransient;
 			state[RPTR_OFF] += len;
 			state[RPTR_TOTOFF] += len;
 			if (state[RPTR_OFF] >= curBuf.state[Buffer.LEN]) {
@@ -256,12 +288,14 @@ public class SGList implements Readable {
 	readPartial(Buffer into, short maxLen)
 	{
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		final short rem = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
+		final short rem = (short)(buf.state[Buffer.LEN] -
+		    state[RPTR_OFF]);
 		final short done = (rem < maxLen) ? rem : maxLen;
 		into.data = buf.data;
 		into.state[Buffer.LEN] = done;
 		into.state[Buffer.OFFSET] = state[RPTR_OFF];
-		into.isTransient = false;
+		into.isDynamic = false;
+		into.isTransient = buf.isTransient;
 		state[RPTR_OFF] += done;
 		state[RPTR_TOTOFF] += done;
 		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
@@ -318,8 +352,17 @@ public class SGList implements Readable {
 		short done = (short)0;
 		while (len > 0) {
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null || buf.state[Buffer.LEN] == (short)0)
+			if (buf.data == null ||
+			    buf.state[Buffer.LEN] == (short)0) {
+				/* Cut off by steal() */
+				if (buf.state[Buffer.OFFSET] > 0 &&
+				    buf.data != null) {
+					state[RPTR_BUF]++;
+					state[RPTR_OFF] = (short)0;
+					continue;
+				}
 				break;
+			}
 			short take = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
 			if (take > len)
 				take = len;
@@ -385,6 +428,12 @@ public class SGList implements Readable {
 	{
 		final Buffer buf = buffers[state[RPTR_BUF]];
 		if (buf.data == null || buf.state[Buffer.LEN] == 0 || atEnd()) {
+			/* This buf could have been cut up by steal() */
+			if (buf.state[Buffer.OFFSET] > 0 && buf.data != null) {
+				state[RPTR_BUF]++;
+				state[RPTR_OFF] = (short)0;
+				return (readByte());
+			}
 			ISOException.throwIt(ISO7816.SW_DATA_INVALID);
 			return (0);
 		}
@@ -424,7 +473,15 @@ public class SGList implements Readable {
 	{
 		while (len > 0) {
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null || buf.state[Buffer.LEN] == (short)0) {
+			if (buf.data == null ||
+			    buf.state[Buffer.LEN] == (short)0) {
+				/* Cut off by steal() */
+				if (buf.state[Buffer.OFFSET] > 0 &&
+				    buf.data != null) {
+					state[RPTR_BUF]++;
+					state[RPTR_OFF] = (short)0;
+					continue;
+				}
 				ISOException.throwIt(ISO7816.SW_DATA_INVALID);
 				return;
 			}
@@ -461,6 +518,7 @@ public class SGList implements Readable {
 		nbuf.data = data;
 		nbuf.state[Buffer.OFFSET] = offset;
 		nbuf.state[Buffer.LEN] = len;
+		nbuf.isDynamic = false;
 		nbuf.isTransient = false;
 
 		state[WPTR_TOTOFF] += len;
@@ -472,8 +530,17 @@ public class SGList implements Readable {
 		short done = (short)0;
 		while (done < maxLen) {
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null || buf.state[Buffer.LEN] == (short)0)
+			if (buf.data == null ||
+			    buf.state[Buffer.LEN] == (short)0) {
+				/* Cut off by steal() */
+				if (buf.state[Buffer.OFFSET] > 0 &&
+				    buf.data != null) {
+					state[RPTR_BUF]++;
+					state[RPTR_OFF] = (short)0;
+					continue;
+				}
 				break;
+			}
 			short take = (short)(buf.state[Buffer.LEN] -
 			    state[RPTR_OFF]);
 			if (take > (short)(maxLen - done))
