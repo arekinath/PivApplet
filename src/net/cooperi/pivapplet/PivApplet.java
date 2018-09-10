@@ -303,6 +303,18 @@ public class PivApplet extends Applet implements ExtendedLength
 		slots[SLOT_9E].cert = files[TAG_CERT_9E];
 		slots[SLOT_9E].pinPolicy = PivSlot.P_NEVER;
 
+		files[TAG_FINGERPRINTS] = new File();
+		files[TAG_FINGERPRINTS].contact = File.P_PIN;
+		files[TAG_FINGERPRINTS].contactless = File.P_NEVER;
+
+		files[TAG_FACE] = new File();
+		files[TAG_FACE].contact = File.P_PIN;
+		files[TAG_FACE].contactless = File.P_PIN;
+
+		files[TAG_PRINTED_INFO] = new File();
+		files[TAG_PRINTED_INFO].contact = File.P_PIN;
+		files[TAG_PRINTED_INFO].contactless = File.P_PIN;
+
 		initCARDCAP();
 		initCHUID();
 		initKEYHIST();
