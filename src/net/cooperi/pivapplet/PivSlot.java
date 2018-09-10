@@ -17,20 +17,18 @@ import javacard.security.SecretKey;
 
 public class PivSlot {
 	public static final byte F_UNLOCKED = (byte)0;
-	public static final byte F_PIN_USED = (byte)1;
-	public static final byte MAX_FLAGS = (byte)(F_PIN_USED + 1);
+	public static final byte F_AFTER_VERIFY = (byte)1;
+	public static final byte MAX_FLAGS = (byte)(F_AFTER_VERIFY + 1);
 
 	public static final byte P_DEFAULT = (byte)0x00;
 	public static final byte P_NEVER = (byte)0x01;
 	public static final byte P_ONCE = (byte)0x02;
 	public static final byte P_ALWAYS = (byte)0x03;
 
-	public byte[] cert = null;
-	public short certLen = 0;
-	public boolean certGzip = false;
 	public boolean imported = false;
+	public File cert = null;
 
-	public byte pinPolicy = P_NEVER;
+	public byte pinPolicy = P_ONCE;
 
 	public KeyPair asym = null;
 	public byte asymAlg = -1;
@@ -44,28 +42,5 @@ public class PivSlot {
 	{
 		flags = JCSystem.makeTransientBooleanArray((short)MAX_FLAGS,
 		    JCSystem.CLEAR_ON_DESELECT);
-	}
-
-	public boolean
-	checkPin(OwnerPIN pin)
-	{
-		switch (pinPolicy) {
-		case P_NEVER:
-			return (true);
-		case P_ONCE:
-			return (pin.isValidated());
-		case P_ALWAYS:
-			if (!pin.isValidated())
-				return (false);
-
-			if (flags[F_PIN_USED]) {
-				return (false);
-			} else {
-				flags[F_PIN_USED] = true;
-				return (true);
-			}
-		default:
-			return (false);
-		}
 	}
 }
