@@ -601,33 +601,32 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		key = buffer[ISO7816.OFFSET_P2];
 
-		switch (key) {
-		case (byte)0x9A:
-			slot = slots[SLOT_9A];
-			break;
-		case (byte)0x9C:
-			slot = slots[SLOT_9C];
-			break;
-		case (byte)0x9D:
-			slot = slots[SLOT_9D];
-			break;
-		case (byte)0x9E:
-			slot = slots[SLOT_9E];
-			break;
-		default:
+		if (key >= (byte)0x9A && key <= (byte)0x9E) {
+			final byte idx = (byte)(key - (byte)0x9A);
+			slot = slots[idx];
+		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
+			final byte idx = (byte)(SLOT_MIN_HIST +
+			    (byte)(key - MIN_HIST_SLOT));
+			slot = slots[idx];
+		} else {
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
 
-		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
-			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+		if (slot == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
 
 		if (!slots[SLOT_9B].flags[PivSlot.F_UNLOCKED]) {
 			ISOException.throwIt(
 			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		lc = apdu.setIncomingAndReceive();
+		if (lc != apdu.getIncomingLength()) {
+			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
 
@@ -817,32 +816,27 @@ public class PivApplet extends Applet implements ExtendedLength
 			return;
 		}
 
+		if (key >= (byte)0x9A && key <= (byte)0x9E) {
+			final byte idx = (byte)(key - (byte)0x9A);
+			slot = slots[idx];
+		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
+			final byte idx = (byte)(SLOT_MIN_HIST +
+			    (byte)(key - MIN_HIST_SLOT));
+			slot = slots[idx];
+		} else {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
 		if (!receiveChain(apdu))
 			return;
 
 		tlv.start(incoming);
-
-		switch (key) {
-		case (byte)0x9a:
-			slot = slots[SLOT_9A];
-			break;
-		case (byte)0x9b:
-			slot = slots[SLOT_9B];
-			break;
-		case (byte)0x9c:
-			slot = slots[SLOT_9C];
-			break;
-		case (byte)0x9d:
-			slot = slots[SLOT_9D];
-			break;
-		case (byte)0x9e:
-			slot = slots[SLOT_9E];
-			break;
-		default:
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
 
 		switch (alg) {
 		case PIV_ALG_RSA1024:
