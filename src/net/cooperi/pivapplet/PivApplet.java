@@ -1572,7 +1572,7 @@ public class PivApplet extends Applet implements ExtendedLength
 					final PivSlot slot = slots[idx];
 					if (slot == null)
 						continue;
-					if (slot.asym != null)
+					if (slot.asym == null)
 						continue;
 					slot.asym.getPrivate().clearKey();
 				}
