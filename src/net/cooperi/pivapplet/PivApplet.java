@@ -2167,7 +2167,15 @@ public class PivApplet extends Applet implements ExtendedLength
 		atslot.asym.genKeyPair();
 		atslot.imported = false;
 
-		writeAttestationCert(atslot);
+		try {
+			writeAttestationCert(atslot);
+		} catch (Exception ex) {
+			/* Ignore it, we just won't make a self-signed one */
+			outgoing.reset();
+			incoming.reset();
+			incoming.cullNonTransient();
+			return;
+		}
 
 		final short len = outgoing.available();
 		final File file = atslot.cert;
