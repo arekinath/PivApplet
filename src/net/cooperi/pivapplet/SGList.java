@@ -141,29 +141,80 @@ public class SGList implements Readable {
 		state[OWPTR_OFF] = (short)0;
 	}
 
+	private short
+	takeForRead(short len)
+	{
+		final Buffer buf = buffers[state[RPTR_BUF]];
+		if (buf.data == null || buf.state[Buffer.LEN] == (short)0) {
+			/* Cut off by steal() */
+			if (buf.state[Buffer.OFFSET] > 0 && buf.data != null) {
+				state[RPTR_BUF]++;
+				state[RPTR_OFF] = (short)0;
+				return (takeForRead(len));
+			}
+			return ((short)0);
+		}
+		short take = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
+		if (take > len)
+			take = len;
+		if (state[RPTR_BUF] == state[WPTR_BUF] &&
+		    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
+			take = (short)(state[WPTR_OFF] - state[RPTR_OFF]);
+		}
+		return (take);
+	}
+
+	private void
+	incRPtr(short take)
+	{
+		final Buffer buf = buffers[state[RPTR_BUF]];
+		state[RPTR_OFF] += take;
+		state[RPTR_TOTOFF] += take;
+		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
+			state[RPTR_BUF]++;
+			state[RPTR_OFF] = (short)0;
+		}
+	}
+
+	private short
+	takeForWrite(short len)
+	{
+		final Buffer buf = buffers[state[WPTR_BUF]];
+		if (buf.data == null || buf.state[Buffer.LEN] == 0)
+			buf.allocTransient();
+		short take = (short)(buf.state[Buffer.LEN] - state[WPTR_OFF]);
+		if (take > len)
+			take = len;
+		if (take == (short)0)
+			ISOException.throwIt(PivApplet.SW_RESERVE_FAILURE);
+		return (take);
+	}
+
+	private void
+	incWPtr(short take)
+	{
+		final Buffer buf = buffers[state[WPTR_BUF]];
+		state[WPTR_OFF] += take;
+		if (state[OWPTR_BUF] == 0 && state[OWPTR_OFF] == 0)
+			state[WPTR_TOTOFF] += take;
+		if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
+			state[WPTR_BUF]++;
+			state[WPTR_OFF] = (short)0;
+		}
+	}
+
 	public void
 	write(byte[] source, short offset, short len)
 	{
 		while (len > 0) {
+			final short take = takeForWrite(len);
 			final Buffer buf = buffers[state[WPTR_BUF]];
-			if (buf.data == null || buf.state[Buffer.LEN] == 0)
-				buf.allocTransient();
-			short take = (short)(buf.state[Buffer.LEN] -
-			    state[WPTR_OFF]);
-			if (take > len)
-				take = len;
 			Util.arrayCopyNonAtomic(source, offset,
 			    buf.data, (short)(state[WPTR_OFF] +
 			    buf.state[Buffer.OFFSET]), take);
 			offset += take;
 			len -= take;
-			state[WPTR_OFF] += take;
-			if (state[OWPTR_BUF] == 0 && state[OWPTR_OFF] == 0)
-				state[WPTR_TOTOFF] += take;
-			if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
-				state[WPTR_BUF]++;
-				state[WPTR_OFF] = (short)0;
-			}
+			incWPtr(take);
 		}
 	}
 
@@ -251,22 +302,14 @@ public class SGList implements Readable {
 	public void
 	endReserve(short used)
 	{
-		final Buffer buf = buffers[state[WPTR_BUF]];
-		state[WPTR_OFF] += used;
-		if (state[OWPTR_BUF] == 0 && state[OWPTR_OFF] == 0)
-			state[WPTR_TOTOFF] += used;
-		if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[WPTR_BUF]++;
-			state[WPTR_OFF] = (short)0;
-		}
+		incWPtr(used);
 	}
 
 	public short
 	read(Buffer into, short len)
 	{
+		final short rem = takeForRead(len);
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		final short rem = (short)(buf.state[Buffer.LEN] -
-		    state[RPTR_OFF]);
 		if (rem >= len) {
 			return (readPartial(into, len));
 		}
@@ -277,24 +320,8 @@ public class SGList implements Readable {
 	public short
 	readPartial(Buffer into, short maxLen)
 	{
+		final short take = takeForRead(maxLen);
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		if (buf.data == null || buf.state[Buffer.LEN] == (short)0) {
-			/* Cut off by steal() */
-			if (buf.state[Buffer.OFFSET] > 0 && buf.data != null) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-				return (readPartial(into, maxLen));
-			}
-			return ((short)0);
-		}
-		short take = (short)(buf.state[Buffer.LEN] -
-		    state[RPTR_OFF]);
-		if (take > maxLen)
-			take = maxLen;
-		if (state[RPTR_BUF] == state[WPTR_BUF] &&
-		    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
-			take = (short)(state[WPTR_OFF] - state[RPTR_OFF]);
-		}
 		if (take == (short)0)
 			return (0);
 		into.data = buf.data;
@@ -303,37 +330,24 @@ public class SGList implements Readable {
 		    buf.state[Buffer.OFFSET]);
 		into.isDynamic = false;
 		into.isTransient = buf.isTransient;
-		state[RPTR_OFF] += take;
-		state[RPTR_TOTOFF] += take;
-		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[RPTR_BUF]++;
-			state[RPTR_OFF] = (short)0;
-		}
+		incRPtr(take);
 		return (take);
 	}
 
 	public void
 	writeByte(byte val)
 	{
+		final short rem = takeForWrite((short)1);
 		final Buffer buf = buffers[state[WPTR_BUF]];
-		if (buf.data == null || buf.state[Buffer.LEN] == 0)
-			buf.allocTransient();
-		buf.data[state[WPTR_OFF]++] = val;
-		if (state[OWPTR_BUF] == 0 && state[OWPTR_OFF] == 0)
-			state[WPTR_TOTOFF]++;
-		if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[WPTR_BUF]++;
-			state[WPTR_OFF] = (short)0;
-		}
+		buf.data[state[WPTR_OFF]] = val;
+		incWPtr((short)1);
 	}
 
 	public void
 	writeShort(short val)
 	{
+		final short rem = takeForWrite((short)2);
 		final Buffer buf = buffers[state[WPTR_BUF]];
-		if (buf.data == null || buf.state[Buffer.LEN] == 0)
-			buf.allocTransient();
-		final short rem = (short)(buf.state[Buffer.LEN] - state[WPTR_OFF]);
 		if (rem < 2) {
 			final short upper = (short)(
 			    (short)((val & (short)0xFF00) >> 8) & (short)0xFF);
@@ -342,14 +356,9 @@ public class SGList implements Readable {
 			writeByte((byte)lower);
 			return;
 		}
-		final short off = (short)(buf.state[Buffer.OFFSET] + state[WPTR_OFF]);
-		state[WPTR_OFF] += 2;
-		if (state[OWPTR_BUF] == 0 && state[OWPTR_OFF] == 0)
-			state[WPTR_TOTOFF] += 2;
-		if (state[WPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[WPTR_BUF]++;
-			state[WPTR_OFF] = (short)0;
-		}
+		final short off = (short)(buf.state[Buffer.OFFSET] +
+		    state[WPTR_OFF]);
+		incWPtr((short)2);
 		Util.setShort(buf.data, off, val);
 	}
 
@@ -358,38 +367,15 @@ public class SGList implements Readable {
 	{
 		short done = (short)0;
 		while (len > 0) {
+			final short take = takeForRead(len);
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null ||
-			    buf.state[Buffer.LEN] == (short)0) {
-				/* Cut off by steal() */
-				if (buf.state[Buffer.OFFSET] > 0 &&
-				    buf.data != null) {
-					state[RPTR_BUF]++;
-					state[RPTR_OFF] = (short)0;
-					continue;
-				}
+			if (take == (short)0)
 				break;
-			}
-			short take = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
-			if (take > len)
-				take = len;
-			if (state[RPTR_BUF] == state[WPTR_BUF] &&
-			    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
-				take = (short)(state[WPTR_OFF] -
-				    state[RPTR_OFF]);
-				if (take == (short)0)
-					break;
-			}
 			dest.append(buf.data, (short)(state[RPTR_OFF] +
 			    buf.state[Buffer.OFFSET]), take);
 			len -= take;
 			done += take;
-			state[RPTR_OFF] += take;
-			state[RPTR_TOTOFF] += take;
-			if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-			}
+			incRPtr(take);
 		}
 		return (done);
 	}
@@ -413,12 +399,14 @@ public class SGList implements Readable {
 	public byte
 	peekByte()
 	{
+		final short take = takeForRead((short)1);
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		if (buf.data == null || buf.state[Buffer.LEN] == 0 || atEnd()) {
+		if (take == (short)0) {
 			ISOException.throwIt(ISO7816.SW_DATA_INVALID);
 			return (0);
 		}
-		final short off = (short)(buf.state[Buffer.OFFSET] + state[RPTR_OFF]);
+		final short off = (short)(buf.state[Buffer.OFFSET] +
+		    state[RPTR_OFF]);
 		return (buf.data[off]);
 	}
 
@@ -426,52 +414,40 @@ public class SGList implements Readable {
 	peekByteW()
 	{
 		final Buffer buf = buffers[state[WPTR_BUF]];
-		final short off = (short)(buf.state[Buffer.OFFSET] + state[WPTR_OFF]);
+		final short off = (short)(buf.state[Buffer.OFFSET] +
+		    state[WPTR_OFF]);
 		return (buf.data[off]);
 	}
 
 	public byte
 	readByte()
 	{
+		final short take = takeForRead((short)1);
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		if (buf.data == null || buf.state[Buffer.LEN] == 0 || atEnd()) {
-			/* This buf could have been cut up by steal() */
-			if (buf.state[Buffer.OFFSET] > 0 && buf.data != null) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-				return (readByte());
-			}
+		if (take == (short)0) {
 			ISOException.throwIt(ISO7816.SW_DATA_INVALID);
 			return (0);
 		}
-		final short off = (short)(buf.state[Buffer.OFFSET] + state[RPTR_OFF]);
-		state[RPTR_TOTOFF]++;
-		state[RPTR_OFF]++;
-		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[RPTR_BUF]++;
-			state[RPTR_OFF] = (short)0;
-		}
+		final short off = (short)(buf.state[Buffer.OFFSET] +
+		    state[RPTR_OFF]);
+		incRPtr((short)1);
 		return (buf.data[off]);
 	}
 
 	public short
 	readShort()
 	{
+		final short rem = takeForRead((short)2);
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		final short rem = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
 		if (rem < 2) {
 			short val = (short)((short)readByte() & 0xFF);
 			val <<= 8;
 			val |= (short)((short)readByte() & 0xFF);
 			return (val);
 		}
-		final short off = (short)(buf.state[Buffer.OFFSET] + state[RPTR_OFF]);
-		state[RPTR_OFF] += 2;
-		state[RPTR_TOTOFF] += 2;
-		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-			state[RPTR_BUF]++;
-			state[RPTR_OFF] = (short)0;
-		}
+		final short off = (short)(buf.state[Buffer.OFFSET] +
+		    state[RPTR_OFF]);
+		incRPtr((short)2);
 		return (Util.getShort(buf.data, off));
 	}
 
@@ -479,35 +455,15 @@ public class SGList implements Readable {
 	skip(short len)
 	{
 		while (len > 0) {
+			final short take = takeForRead(len);
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null ||
-			    buf.state[Buffer.LEN] == (short)0) {
-				/* Cut off by steal() */
-				if (buf.state[Buffer.OFFSET] > 0 &&
-				    buf.data != null) {
-					state[RPTR_BUF]++;
-					state[RPTR_OFF] = (short)0;
-					continue;
-				}
-				ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-				return;
-			}
-			short take = (short)(buf.state[Buffer.LEN] - state[RPTR_OFF]);
-			if (take > len)
-				take = len;
-			if (state[RPTR_BUF] == state[WPTR_BUF] &&
-			    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
+			if (take == (short)0) {
 				ISOException.throwIt(
 				    PivApplet.SW_SKIPPED_OVER_WPTR);
 				return;
 			}
 			len -= take;
-			state[RPTR_OFF] += take;
-			state[RPTR_TOTOFF] += take;
-			if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-			}
+			incRPtr(take);
 		}
 	}
 
@@ -536,40 +492,14 @@ public class SGList implements Readable {
 	{
 		short done = (short)0;
 		while (done < maxLen) {
+			final short take = takeForRead((short)(maxLen - done));
 			final Buffer buf = buffers[state[RPTR_BUF]];
-			if (buf.data == null ||
-			    buf.state[Buffer.LEN] == (short)0) {
-				/* Cut off by steal() */
-				if (buf.state[Buffer.OFFSET] > 0 &&
-				    buf.data != null) {
-					state[RPTR_BUF]++;
-					state[RPTR_OFF] = (short)0;
-					continue;
-				}
-				break;
-			}
-			short take = (short)(buf.state[Buffer.LEN] -
-			    state[RPTR_OFF]);
-			if (take > (short)(maxLen - done))
-				take = (short)(maxLen - done);
-			if (state[RPTR_BUF] == state[WPTR_BUF] &&
-			    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
-				take = (short)(state[WPTR_OFF] -
-				    state[RPTR_OFF]);
-				if (take == (short)0)
-					break;
-			}
 			Util.arrayCopyNonAtomic(buf.data,
 			    (short)(state[RPTR_OFF] + buf.state[Buffer.OFFSET]),
 			    dest, offset, take);
 			offset += take;
 			done += take;
-			state[RPTR_OFF] += take;
-			state[RPTR_TOTOFF] += take;
-			if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-			}
+			incRPtr(take);
 		}
 		return (done);
 	}
