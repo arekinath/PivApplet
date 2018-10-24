@@ -34,13 +34,15 @@ public class PivSlot {
 	public byte asymAlg = -1;
 	public SecretKey sym = null;
 	public byte symAlg = -1;
+	public byte id = (byte)0;
 
 	public boolean[] flags = null;
 
 	public
-	PivSlot()
+	PivSlot(byte id)
 	{
 		flags = JCSystem.makeTransientBooleanArray((short)MAX_FLAGS,
 		    JCSystem.CLEAR_ON_DESELECT);
+		this.id = id;
 	}
 }

@@ -26,6 +26,7 @@ What works:
     - Version indicator (we pretend to be a YK4)
     - Set management key
     - Import asymmetric key
+    - Attestation using slot F9
 
 What doesn't work:
 

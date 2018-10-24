@@ -264,23 +264,13 @@ public class SGList implements Readable {
 	public short
 	read(Buffer into, short len)
 	{
-		final Buffer curBuf = buffers[state[RPTR_BUF]];
-		final short rem = (short)(curBuf.state[Buffer.LEN] - state[RPTR_OFF]);
+		final Buffer buf = buffers[state[RPTR_BUF]];
+		final short rem = (short)(buf.state[Buffer.LEN] -
+		    state[RPTR_OFF]);
 		if (rem >= len) {
-			into.data = curBuf.data;
-			into.state[Buffer.LEN] = len;
-			into.state[Buffer.OFFSET] = state[RPTR_OFF];
-			into.isDynamic = false;
-			into.isTransient = curBuf.isTransient;
-			state[RPTR_OFF] += len;
-			state[RPTR_TOTOFF] += len;
-			if (state[RPTR_OFF] >= curBuf.state[Buffer.LEN]) {
-				state[RPTR_BUF]++;
-				state[RPTR_OFF] = (short)0;
-			}
-			return (len);
+			return (readPartial(into, len));
 		}
-		startReserve(len, into);
+		steal(len, into);
 		return (read(into.data, into.state[Buffer.OFFSET], len));
 	}
 
@@ -288,21 +278,38 @@ public class SGList implements Readable {
 	readPartial(Buffer into, short maxLen)
 	{
 		final Buffer buf = buffers[state[RPTR_BUF]];
-		final short rem = (short)(buf.state[Buffer.LEN] -
+		if (buf.data == null || buf.state[Buffer.LEN] == (short)0) {
+			/* Cut off by steal() */
+			if (buf.state[Buffer.OFFSET] > 0 && buf.data != null) {
+				state[RPTR_BUF]++;
+				state[RPTR_OFF] = (short)0;
+				return (readPartial(into, maxLen));
+			}
+			return ((short)0);
+		}
+		short take = (short)(buf.state[Buffer.LEN] -
 		    state[RPTR_OFF]);
-		final short done = (rem < maxLen) ? rem : maxLen;
+		if (take > maxLen)
+			take = maxLen;
+		if (state[RPTR_BUF] == state[WPTR_BUF] &&
+		    (short)(state[RPTR_OFF] + take) > state[WPTR_OFF]) {
+			take = (short)(state[WPTR_OFF] - state[RPTR_OFF]);
+		}
+		if (take == (short)0)
+			return (0);
 		into.data = buf.data;
-		into.state[Buffer.LEN] = done;
-		into.state[Buffer.OFFSET] = state[RPTR_OFF];
+		into.state[Buffer.LEN] = take;
+		into.state[Buffer.OFFSET] = (short)(state[RPTR_OFF] +
+		    buf.state[Buffer.OFFSET]);
 		into.isDynamic = false;
 		into.isTransient = buf.isTransient;
-		state[RPTR_OFF] += done;
-		state[RPTR_TOTOFF] += done;
+		state[RPTR_OFF] += take;
+		state[RPTR_TOTOFF] += take;
 		if (state[RPTR_OFF] >= buf.state[Buffer.LEN]) {
 			state[RPTR_BUF]++;
 			state[RPTR_OFF] = (short)0;
 		}
-		return (done);
+		return (take);
 	}
 
 	public void

@@ -73,6 +73,10 @@ public class PivApplet extends Applet implements ExtendedLength
 	    (byte)0x02
 	};
 
+	private static final byte[] YKPIV_VERSION = {
+	    (byte)4, (byte)0, (byte)0
+	};
+
 	private static final byte INS_VERIFY = (byte)0x20;
 	private static final byte INS_CHANGE_PIN = (byte)0x24;
 	private static final byte INS_RESET_PIN = (byte)0x2C;
@@ -85,6 +89,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_SET_MGMT = (byte)0xff;
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
+	private static final byte INS_ATTEST = (byte)0xf9;
 
 	private static final byte INS_SG_DEBUG = (byte)0xe0;
 
@@ -107,6 +112,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 	private byte[] challenge = null;
 	private byte[] iv = null;
+	private byte[] certSerial = null;
 
 	private byte[] guid = null;
 	private byte[] cardId = null;
@@ -124,10 +130,12 @@ public class PivApplet extends Applet implements ExtendedLength
 	private Cipher rsaPkcs1 = null;
 	private Signature ecdsaP256Sha = null;
 	private Signature ecdsaP256Sha256 = null;
+	private Signature rsaSha = null;
+	private Signature rsaSha256 = null;
 	private KeyAgreement ecdh = null;
 	private KeyAgreement ecdhSha = null;
 
-	private static final byte MAX_SLOTS = (byte)16;
+	private static final byte MAX_SLOTS = (byte)17;
 
 	private static final byte SLOT_9A = (byte)0;
 	private static final byte SLOT_9B = (byte)1;
@@ -136,6 +144,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte SLOT_9E = (byte)4;
 	private static final byte SLOT_82 = (byte)5;
 	private static final byte SLOT_8C = (byte)15;
+	private static final byte SLOT_F9 = (byte)16;
 	private PivSlot[] slots = null;
 	private byte retiredKeys = 0;
 
@@ -180,6 +189,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 	private static final byte ALG_EC_SVDP_DH_PLAIN = (byte)3;
 	private static final byte ALG_EC_SVDP_DHC_PLAIN = (byte)4;
+	private static final byte ALG_RSA_SHA_256_PKCS1 = (byte)40;
 
 	public static void
 	install(byte[] info, short off, byte len)
@@ -205,6 +215,20 @@ public class PivApplet extends Applet implements ExtendedLength
 		try {
 			ecdsaP256Sha256 = Signature.getInstance(
 			    ECParams.ALG_ECDSA_SHA_256, false);
+		} catch (CryptoException ex) {
+			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
+				throw (ex);
+		}
+		try {
+			rsaSha = Signature.getInstance(
+			    Signature.ALG_RSA_SHA_PKCS1, false);
+		} catch (CryptoException ex) {
+			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
+				throw (ex);
+		}
+		try {
+			rsaSha256 = Signature.getInstance(
+			    ALG_RSA_SHA_256_PKCS1, false);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
@@ -250,12 +274,16 @@ public class PivApplet extends Applet implements ExtendedLength
 		randData.generateData(cardId, (short)CARD_ID_FIXED.length,
 		    (short)(21 - (short)CARD_ID_FIXED.length));
 
+		certSerial = new byte[16];
 		fascn = new byte[25];
 		expiry = new byte[] { '2', '0', '5', '0', '0', '1', '0', '1' };
 
 		slots = new PivSlot[MAX_SLOTS];
 		for (byte i = SLOT_9A; i <= SLOT_9E; ++i)
-			slots[i] = new PivSlot();
+			slots[i] = new PivSlot((byte)((byte)0x9A + i));
+		for (byte i = SLOT_82; i <= SLOT_8C; ++i)
+			slots[i] = new PivSlot((byte)((byte)0x82 + i));
+		slots[SLOT_F9] = new PivSlot((byte)0xF9);
 
 		files = new File[TAG_MAX];
 
@@ -315,9 +343,12 @@ public class PivApplet extends Applet implements ExtendedLength
 		files[TAG_PRINTED_INFO].contact = File.P_PIN;
 		files[TAG_PRINTED_INFO].contactless = File.P_PIN;
 
+		slots[SLOT_F9].cert = new File();
+
 		initCARDCAP();
 		initCHUID();
 		initKEYHIST();
+		initAttestation();
 	}
 
 	public void
@@ -386,6 +417,9 @@ public class PivApplet extends Applet implements ExtendedLength
 		case INS_GET_RESPONSE:
 			continueResponse(apdu);
 			break;
+		case INS_ATTEST:
+			processAttest(apdu);
+			break;
 		default:
 			ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
 		}
@@ -429,13 +463,47 @@ public class PivApplet extends Applet implements ExtendedLength
 		final byte[] buffer = apdu.getBuffer();
 
 		le = apdu.setOutgoing();
-		buffer[len++] = (byte)0x04;
-		buffer[len++] = (byte)0x00;
-		buffer[len++] = (byte)0x00;
+		buffer[len++] = YKPIV_VERSION[0];
+		buffer[len++] = YKPIV_VERSION[1];
+		buffer[len++] = YKPIV_VERSION[2];
 
 		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
 		apdu.sendBytes((short)0, len);
+	}
+
+	private void
+	processAttest(APDU apdu)
+	{
+		final byte[] buffer = apdu.getBuffer();
+		final byte key = buffer[ISO7816.OFFSET_P1];
+		final PivSlot slot;
+
+		if (key >= (byte)0x9A && key <= (byte)0x9E) {
+			final byte idx = (byte)(key - (byte)0x9A);
+			slot = slots[idx];
+		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
+			final byte idx = (byte)(SLOT_MIN_HIST +
+			    (byte)(key - MIN_HIST_SLOT));
+			slot = slots[idx];
+		} else {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (buffer[ISO7816.OFFSET_P2] != (byte)0x00) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		writeAttestationCert(slot);
+
+		sendOutgoing(apdu);
 	}
 
 	private void
@@ -620,6 +688,8 @@ public class PivApplet extends Applet implements ExtendedLength
 			final byte idx = (byte)(SLOT_MIN_HIST +
 			    (byte)(key - MIN_HIST_SLOT));
 			slot = slots[idx];
+		} else if (key == (byte)0xF9) {
+			slot = slots[SLOT_F9];
 		} else {
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
@@ -1754,22 +1824,38 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		final short taglen = tlv.tagLength();
 
-		if (taglen == (short)3 &&
-		    tlv.readByte() == (byte)0x5F &&
-		    tlv.readByte() == (byte)0xC1) {
-			tag = tlv.readByte();
-			tlv.end();
+		if (taglen == (short)3) {
+			final byte tag0 = tlv.readByte();
+			final byte tag1 = tlv.readByte();
+			final byte tag2 = tlv.readByte();
+			final File file;
 
-			if (tag < 0 || tag > TAG_MAX) {
-				tlv.abort();
+			if (tag0 != (short)0x5F) {
 				ISOException.throwIt(
 				    ISO7816.SW_FUNC_NOT_SUPPORTED);
 				return;
 			}
 
-			if (files[tag] == null)
-				files[tag] = new File();
-			final File file = files[tag];
+			if (tag1 == (byte)0xFF && tag2 == (byte)0x01) {
+				file = slots[SLOT_F9].cert;
+			} else if (tag1 == (byte)0xC1) {
+				if (tag2 < 0 || tag2 > TAG_MAX) {
+					file = null;
+				} else {
+					if (files[tag2] == null)
+						files[tag2] = new File();
+					file = files[tag2];
+				}
+			} else {
+				file = null;
+			}
+			tlv.end();
+
+			if (file == null) {
+				ISOException.throwIt(
+				    ISO7816.SW_FUNC_NOT_SUPPORTED);
+				return;
+			}
 
 			if (tlv.readTag() != (byte)0x53) {
 				tlv.abort();
@@ -1835,15 +1921,32 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		final short taglen = tlv.tagLength();
 
-		if (taglen == (short)3 &&
-		    tlv.readByte() == (byte)0x5F &&
-		    tlv.readByte() == (byte)0xC1) {
-			/* A regular PIV object, so let's go find the data. */
-			tag = tlv.readByte();
+		if (taglen == (short)3) {
+			final byte tag0 = tlv.readByte();
+			final byte tag1 = tlv.readByte();
+			final byte tag2 = tlv.readByte();
+			final File file;
+
+			if (tag0 != (short)0x5F) {
+				ISOException.throwIt(
+				    ISO7816.SW_FILE_NOT_FOUND);
+				return;
+			}
+
+			if (tag1 == (byte)0xFF && tag2 == (byte)0x01) {
+				file = slots[SLOT_F9].cert;
+			} else if (tag1 == (byte)0xC1) {
+				if (tag2 < 0 || tag2 > TAG_MAX) {
+					file = null;
+				} else {
+					file = files[tag2];
+				}
+			} else {
+				file = null;
+			}
 			tlv.end();
 			tlv.finish();
 
-			final File file = files[tag];
 			if (file == null || file.data == null ||
 			    file.len == 0) {
 				ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
@@ -2037,5 +2140,413 @@ public class PivApplet extends Applet implements ExtendedLength
 		files[TAG_KEYHIST].len = len;
 		files[TAG_KEYHIST].data = new byte[len];
 		outgoing.read(files[TAG_KEYHIST].data, (short)0, len);
+	}
+
+	private void
+	initAttestation()
+	{
+		final PivSlot atslot = slots[SLOT_F9];
+
+		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
+			atslot.asymAlg = PIV_ALG_ECCP256;
+			final ECPrivateKey ecPriv;
+			final ECPublicKey ecPub;
+			ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
+			    KeyBuilder.TYPE_EC_FP_PRIVATE,
+			    (short)256, false);
+			ecPub = (ECPublicKey)KeyBuilder.buildKey(
+			    KeyBuilder.TYPE_EC_FP_PUBLIC,
+			    (short)256, false);
+			atslot.asym = new KeyPair(
+			    (PublicKey)ecPub, (PrivateKey)ecPriv);
+			ECParams.setCurveParameters(ecPriv);
+			ECParams.setCurveParameters(ecPub);
+		} else if (rsaSha != null || rsaSha256 != null) {
+			atslot.asymAlg = PIV_ALG_RSA2048;
+			atslot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
+			    (short)2048);
+		} else {
+			return;
+		}
+		atslot.asym.genKeyPair();
+		atslot.imported = false;
+
+		writeAttestationCert(atslot);
+
+		final short len = outgoing.available();
+		final File file = atslot.cert;
+
+		file.data = new byte[len];
+		file.len = outgoing.read(file.data, (short)0, len);
+
+		outgoing.reset();
+		incoming.reset();
+		incoming.cullNonTransient();
+	}
+
+	private static final byte ASN1_SEQ = (byte)0x30;
+	private static final byte ASN1_SET = (byte)0x31;
+	private static final byte ASN1_INTEGER = (byte)0x02;
+	private static final byte ASN1_NULL = (byte)0x05;
+	private static final byte ASN1_OID = (byte)0x06;
+	private static final byte ASN1_UTF8STRING = (byte)0x0c;
+	private static final byte ASN1_GENTIME = (byte)0x18;
+	private static final byte ASN1_BITSTRING = (byte)0x03;
+	private static final byte ASN1_OCTETSTRING = (byte)0x04;
+
+	private static final byte ASN1_APP_0 = (byte)0xA0;
+	private static final byte ASN1_APP_3 = (byte)0xA3;
+
+	private static final byte[] OID_RSA = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7,
+	    (byte)0x0D, (byte)0x01, (byte)0x01, (byte)0x01
+	};
+	private static final byte[] OID_RSA_SHA = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7,
+	    (byte)0x0D, (byte)0x01, (byte)0x01, (byte)0x05
+	};
+	private static final byte[] OID_RSA_SHA256 = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7,
+	    (byte)0x0D, (byte)0x01, (byte)0x01, (byte)0x0B
+	};
+	private static final byte[] OID_ECDSA_SHA = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
+	    (byte)0x04, (byte)0x01
+	};
+	private static final byte[] OID_ECDSA_SHA256 = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
+	    (byte)0x04, (byte)0x03, (byte)0x02
+	};
+
+	private static final byte[] OID_CN = {
+	    (byte)0x55, (byte)0x04, (byte)0x03
+	};
+	private static final byte[] OID_ECPUBKEY = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
+	    (byte)0x02, (byte)0x01
+	};
+	private static final byte[] OID_SECP256 = {
+	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
+	    (byte)0x03, (byte)0x01, (byte)0x07
+	};
+	private static final byte[] OID_YUBICOX = {
+	    (byte)0x2B, (byte)0x06, (byte)0x01, (byte)0x04, (byte)0x01,
+	    (byte)0x82, (byte)0xC4, (byte)0x0A, (byte)0x03
+	};
+
+	private static final byte[] X509_NOTBEFORE = {
+	    '2', '0', '1', '8', '0', '1', '0', '1',
+	    '0', '0', '0', '0', '0', '0', 'Z'
+	};
+	private static final byte[] X509_NOTAFTER = {
+	    '2', '0', '5', '0', '0', '1', '0', '1',
+	    '0', '0', '0', '0', '0', '0', 'Z'
+	};
+
+	private static final byte[] CN_STRING = {
+	    'P', 'I', 'V', 'A', 'p', 'p', 'l', 'e', 't', ' ',
+	    'A', 't', 't', 'e', 's', 't', 'a', 't', 'i', 'o', 'n'
+	};
+
+	private void
+	writeHex(byte val)
+	{
+		final byte lowNybble = (byte)(val & (byte)0x0F);
+		final byte highNybble = (byte)((byte)(val >> 4) & (byte)0xF);
+		final byte hexLow;
+		if (lowNybble <= (byte)9)
+			hexLow = (byte)('0' + lowNybble);
+		else
+			hexLow = (byte)('A' + (byte)(lowNybble - (byte)0xA));
+		final byte hexHigh;
+		if (highNybble <= (byte)9)
+			hexHigh = (byte)('0' + highNybble);
+		else
+			hexHigh = (byte)('A' + (byte)(highNybble - (byte)0xA));
+		wtlv.writeByte(hexHigh);
+		wtlv.writeByte(hexLow);
+	}
+
+	private void
+	writeX509CertInfo(PivSlot slot)
+	{
+		short len;
+		final PivSlot atslot = slots[SLOT_F9];
+
+		wtlv.push64k(ASN1_SEQ);
+
+		/* Version */
+		wtlv.push(ASN1_APP_0);
+		wtlv.push(ASN1_INTEGER);
+		wtlv.writeByte((byte)0x02);
+		wtlv.pop();
+		wtlv.pop();
+
+		/* Serial */
+		wtlv.push(ASN1_INTEGER);
+		wtlv.write(certSerial, (short)0, (short)certSerial.length);
+		wtlv.pop();
+
+		/* Signature alg */
+		wtlv.push(ASN1_SEQ);
+		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
+		    atslot.asymAlg == PIV_ALG_RSA2048) {
+			wtlv.push(ASN1_OID);
+			if (rsaSha256 != null) {
+				wtlv.write(OID_RSA_SHA256, (short)0,
+				    (short)OID_RSA_SHA256.length);
+			} else if (rsaSha != null) {
+				wtlv.write(OID_RSA_SHA, (short)0,
+				    (short)OID_RSA_SHA.length);
+			}
+			wtlv.pop();
+			wtlv.push(ASN1_NULL);
+			wtlv.pop();
+		} else if (atslot.asymAlg == PIV_ALG_ECCP256) {
+			wtlv.push(ASN1_OID);
+			if (ecdsaP256Sha256 != null) {
+				wtlv.write(OID_ECDSA_SHA256, (short)0,
+				    (short)OID_ECDSA_SHA256.length);
+			} else if (ecdsaP256Sha != null) {
+				wtlv.write(OID_ECDSA_SHA, (short)0,
+				    (short)OID_ECDSA_SHA.length);
+			}
+			wtlv.pop();
+		}
+		wtlv.pop();
+
+		/* Issuer */
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_SET);
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_OID);
+		wtlv.write(OID_CN, (short)0, (short)OID_CN.length);
+		wtlv.pop();
+		wtlv.push(ASN1_UTF8STRING);
+		wtlv.write(CN_STRING, (short)0, (short)CN_STRING.length);
+		wtlv.pop();
+		wtlv.pop();
+		wtlv.pop();
+		wtlv.pop();
+
+		/* Validity */
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_GENTIME);
+		wtlv.write(X509_NOTBEFORE, (short)0,
+		    (short)X509_NOTBEFORE.length);
+		wtlv.pop();
+		wtlv.push(ASN1_GENTIME);
+		wtlv.write(X509_NOTAFTER, (short)0,
+		    (short)X509_NOTAFTER.length);
+		wtlv.pop();
+		wtlv.pop();
+
+		/* Subject */
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_SET);
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_OID);
+		wtlv.write(OID_CN, (short)0, (short)OID_CN.length);
+		wtlv.pop();
+		wtlv.push(ASN1_UTF8STRING);
+		wtlv.write(CN_STRING, (short)0, (short)CN_STRING.length);
+		if (slot.id != (byte)0xF9) {
+			wtlv.writeByte((byte)' ');
+			writeHex(slot.id);
+		}
+		wtlv.pop();
+		wtlv.pop();
+		wtlv.pop();
+		wtlv.pop();
+
+		/* Public key */
+		if (slot.asymAlg == PIV_ALG_ECCP256) {
+			final ECPublicKey ecpub =
+			    (ECPublicKey)slot.asym.getPublic();
+			wtlv.push(ASN1_SEQ);
+			/* Alg info */
+			wtlv.push(ASN1_SEQ);
+			wtlv.push(ASN1_OID);
+			wtlv.write(OID_ECPUBKEY, (short)0,
+			    (short)OID_ECPUBKEY.length);
+			wtlv.pop();
+			wtlv.push(ASN1_OID);
+			wtlv.write(OID_SECP256, (short)0,
+			    (short)OID_SECP256.length);
+			wtlv.pop();
+			wtlv.pop();
+			/* Key material */
+			wtlv.push(ASN1_BITSTRING);
+			wtlv.writeByte((byte)0x00);	/* no borrowed bits */
+			wtlv.startReserve((short)33, tempBuf);
+			len = ecpub.getW(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(len);
+			wtlv.pop();
+		} else if (slot.asymAlg == PIV_ALG_RSA1024 ||
+		    slot.asymAlg == PIV_ALG_RSA2048) {
+			final RSAPublicKey rpubk =
+			    (RSAPublicKey)slot.asym.getPublic();
+			wtlv.push64k(ASN1_SEQ);
+
+			/* Alg info */
+			wtlv.push(ASN1_SEQ);
+			wtlv.push(ASN1_OID);
+			wtlv.write(OID_RSA, (short)0, (short)OID_RSA.length);
+			wtlv.pop();
+			wtlv.push(ASN1_NULL);
+			wtlv.pop();
+			wtlv.pop();
+
+			/* Key material */
+			wtlv.push64k(ASN1_BITSTRING);
+			wtlv.writeByte((byte)0x00);	/* no borrowed bits */
+			wtlv.push64k(ASN1_SEQ);
+
+			/* Modulus */
+			wtlv.push64k(ASN1_INTEGER);
+			wtlv.startReserve((short)257, tempBuf);
+			len = rpubk.getModulus(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(len);
+			wtlv.pop();
+
+			/* Exponent */
+			wtlv.push(ASN1_INTEGER);
+			wtlv.startReserve((short)9, tempBuf);
+			len = rpubk.getExponent(tempBuf.data, tempBuf.offset());
+			wtlv.endReserve(len);
+			wtlv.pop();
+
+			wtlv.pop();
+			wtlv.pop();
+		}
+		wtlv.pop();
+
+		/* Extensions */
+		wtlv.push(ASN1_APP_3);
+		wtlv.push(ASN1_SEQ);
+
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_OID);
+		wtlv.write(OID_YUBICOX, (short)0, (short)OID_YUBICOX.length);
+		wtlv.writeByte((byte)0x03);
+		wtlv.pop();
+		wtlv.push(ASN1_OCTETSTRING);
+		wtlv.writeByte(YKPIV_VERSION[0]);
+		wtlv.writeByte(YKPIV_VERSION[1]);
+		wtlv.writeByte(YKPIV_VERSION[2]);
+		wtlv.pop();
+		wtlv.pop();
+
+		wtlv.push(ASN1_SEQ);
+		wtlv.push(ASN1_OID);
+		wtlv.write(OID_YUBICOX, (short)0, (short)OID_YUBICOX.length);
+		wtlv.writeByte((byte)0x08);
+		wtlv.pop();
+		wtlv.push(ASN1_OCTETSTRING);
+		wtlv.writeByte(slot.pinPolicy);
+		wtlv.writeByte((byte)0x01);
+		wtlv.pop();
+		wtlv.pop();
+
+		wtlv.pop();
+		wtlv.pop();
+
+		wtlv.pop();
+	}
+
+	private void
+	writeAttestationCert(PivSlot slot)
+	{
+		final PivSlot atslot = slots[SLOT_F9];
+		final Signature si;
+		short avail, len;
+
+		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
+		    atslot.asymAlg == PIV_ALG_RSA2048) {
+			if (rsaSha256 != null)
+				si = rsaSha256;
+			else
+				si = rsaSha;
+		} else if (atslot.asymAlg == PIV_ALG_ECCP256) {
+			if (ecdsaP256Sha256 != null)
+				si = ecdsaP256Sha256;
+			else
+				si = ecdsaP256Sha;
+		} else {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (si == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		randData.generateData(certSerial, (short)0,
+		    (short)certSerial.length);
+		certSerial[0] = (byte)(certSerial[0] & (byte)0x7F);
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+		writeX509CertInfo(slot);
+		wtlv.end();
+
+		si.init(atslot.asym.getPrivate(), Signature.MODE_SIGN);
+
+		avail = outgoing.available();
+		while (avail > 0) {
+			final short read = outgoing.readPartial(tempBuf, avail);
+			si.update(tempBuf.data, tempBuf.offset(), read);
+			avail -= read;
+		}
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+
+		if (slot.id == (byte)0xF9)
+			wtlv.push64k((byte)0x70);
+
+		wtlv.push64k(ASN1_SEQ);
+		writeX509CertInfo(slot);
+
+		wtlv.push(ASN1_SEQ);
+		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
+		    atslot.asymAlg == PIV_ALG_RSA2048) {
+			wtlv.push(ASN1_OID);
+			if (rsaSha256 != null) {
+				wtlv.write(OID_RSA_SHA256, (short)0,
+				    (short)OID_RSA_SHA256.length);
+			} else if (rsaSha != null) {
+				wtlv.write(OID_RSA_SHA, (short)0,
+				    (short)OID_RSA_SHA.length);
+			}
+			wtlv.pop();
+			wtlv.push(ASN1_NULL);
+			wtlv.pop();
+		} else if (atslot.asymAlg == PIV_ALG_ECCP256) {
+			wtlv.push(ASN1_OID);
+			if (ecdsaP256Sha256 != null) {
+				wtlv.write(OID_ECDSA_SHA256, (short)0,
+				    (short)OID_ECDSA_SHA256.length);
+			} else if (ecdsaP256Sha != null) {
+				wtlv.write(OID_ECDSA_SHA, (short)0,
+				    (short)OID_ECDSA_SHA.length);
+			}
+			wtlv.pop();
+		}
+		wtlv.pop();
+
+		wtlv.push64k(ASN1_BITSTRING);
+		wtlv.writeByte((byte)0x00);	/* no borrowed bits */
+		wtlv.startReserve((short)257, tempBuf);
+		len = si.sign(null, (short)0, (short)0, tempBuf.data,
+		    tempBuf.offset());
+		wtlv.endReserve(len);
+		wtlv.pop();
+
+		wtlv.pop();
+		if (slot.id == (byte)0xF9)
+			wtlv.pop();
+		wtlv.end();
 	}
 }
