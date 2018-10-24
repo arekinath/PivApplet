@@ -2161,10 +2161,6 @@ public class PivApplet extends Applet implements ExtendedLength
 			    (PublicKey)ecPub, (PrivateKey)ecPriv);
 			ECParams.setCurveParameters(ecPriv);
 			ECParams.setCurveParameters(ecPub);
-		} else if (rsaSha != null || rsaSha256 != null) {
-			atslot.asymAlg = PIV_ALG_RSA2048;
-			atslot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
-			    (short)2048);
 		} else {
 			return;
 		}
