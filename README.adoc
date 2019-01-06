@@ -20,21 +20,27 @@ What works:
  * EC P-256 key generation (but no ECDSA)
  * EC Diffie-Hellman on P-256
  * PINs and change of PIN, PUK reset
- * Some https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
+ * Most https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
    YubiKeyPIV-compatible extensions] are implemented and working:
     - PIN policy
-    - Version indicator (we pretend to be a YK4)
+    - Version indicator (we pretend to be a YK5)
+    - Fetch serial number (randomly generated)
     - Set management key
     - Import asymmetric key
+    - Reset after PIN+PUK blocked
+    - Change PIN/PUK retry limits
     - Attestation using slot F9
 
 What doesn't work:
 
- * ECDSA (probably not fixable without JavaCard 3.0.5 or proprietary APIs)
-   - There is partial support for it in the code, but it will not work without
-     a client that is specifically aware of the double-hashing issue.
- * Yubikey extensions (TODO):
-   - Reset after PUK blocked
+ * PIV-compatible ECDSA (probably not fixable without JavaCard 3.0.5 or
+   proprietary APIs)
+   - There is support for it in the code, but it will not work without
+     a client that is specifically aware of the double-hashing issue (uses
+     a proprietary algorithm ID).
+ * YubicoPIV touch policy
+   - No standard JavaCard APIs for accessing GPIO or sensors so this is
+     probably not happening.
 
 ## Installing
 
@@ -104,7 +110,9 @@ work with PivApplet.)
 
 The applet supports an extension for doing ECDSA with hash-on-card, which client
 software will have to specifically add support for if it wants to use ECDSA
-signing with this applet.
+signing with this applet. As of writing, the only PIV client with support
+for this extension known to the authors is
+https://github.com/arekinath/piv-agent[`piv-agent`].
 
 Unfortunately, regular PIV ECDSA signing is not possible with the JavaCard
 standard crypto functions, which only support a single operation that combines

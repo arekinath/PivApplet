@@ -74,9 +74,10 @@ public class PivApplet extends Applet implements ExtendedLength
 	};
 
 	private static final byte[] YKPIV_VERSION = {
-	    (byte)4, (byte)0, (byte)0
+	    (byte)5, (byte)0, (byte)0
 	};
 
+	/* Standard PIV commands we support. */
 	private static final byte INS_VERIFY = (byte)0x20;
 	private static final byte INS_CHANGE_PIN = (byte)0x24;
 	private static final byte INS_RESET_PIN = (byte)0x2C;
@@ -86,11 +87,16 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte INS_GEN_ASYM = (byte)0x47;
 	private static final byte INS_GET_RESPONSE = (byte)0xC0;
 
+	/* YubicoPIV extensions we support. */
 	private static final byte INS_SET_MGMT = (byte)0xff;
 	private static final byte INS_IMPORT_ASYM = (byte)0xfe;
 	private static final byte INS_GET_VER = (byte)0xfd;
+	private static final byte INS_RESET = (byte)0xfb;
+	private static final byte INS_SET_PIN_RETRIES = (byte)0xfa;
 	private static final byte INS_ATTEST = (byte)0xf9;
+	private static final byte INS_GET_SERIAL = (byte)0xf8;
 
+	/* Our own private extensions. */
 	private static final byte INS_SG_DEBUG = (byte)0xe0;
 
 	/* ASSERT: tag.end() was called but tag has bytes left. */
@@ -116,6 +122,7 @@ public class PivApplet extends Applet implements ExtendedLength
 
 	private byte[] guid = null;
 	private byte[] cardId = null;
+	private byte[] serial = null;
 	private byte[] fascn = null;
 	private byte[] expiry = null;
 
@@ -274,6 +281,10 @@ public class PivApplet extends Applet implements ExtendedLength
 		randData.generateData(cardId, (short)CARD_ID_FIXED.length,
 		    (short)(21 - (short)CARD_ID_FIXED.length));
 
+		serial = new byte[4];
+		randData.generateData(serial, (short)0, (short)4);
+		serial[0] |= (byte)0x80;
+
 		certSerial = new byte[16];
 		fascn = new byte[25];
 		expiry = new byte[] { '2', '0', '5', '0', '0', '1', '0', '1' };
@@ -402,6 +413,12 @@ public class PivApplet extends Applet implements ExtendedLength
 		case INS_RESET_PIN:
 			processResetPin(apdu);
 			break;
+		case INS_SET_PIN_RETRIES:
+			processSetPinRetries(apdu);
+			break;
+		case INS_RESET:
+			processReset(apdu);
+			break;
 		case INS_GET_VER:
 			processGetVersion(apdu);
 			break;
@@ -419,6 +436,9 @@ public class PivApplet extends Applet implements ExtendedLength
 			break;
 		case INS_ATTEST:
 			processAttest(apdu);
+			break;
+		case INS_GET_SERIAL:
+			processGetSerial(apdu);
 			break;
 		default:
 			ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -466,6 +486,24 @@ public class PivApplet extends Applet implements ExtendedLength
 		buffer[len++] = YKPIV_VERSION[0];
 		buffer[len++] = YKPIV_VERSION[1];
 		buffer[len++] = YKPIV_VERSION[2];
+
+		len = le > 0 ? (le > len ? len : le) : len;
+		apdu.setOutgoingLength(len);
+		apdu.sendBytes((short)0, len);
+	}
+
+	private void
+	processGetSerial(APDU apdu)
+	{
+		short len = 0;
+		final short le;
+		final byte[] buffer = apdu.getBuffer();
+
+		le = apdu.setOutgoing();
+		buffer[len++] = serial[0];
+		buffer[len++] = serial[1];
+		buffer[len++] = serial[2];
+		buffer[len++] = serial[3];
 
 		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
@@ -1601,7 +1639,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	{
 		final byte[] buffer = apdu.getBuffer();
 		short lc, pinOff, idx;
-		OwnerPIN pin;
+		final OwnerPIN pin;
 
 		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00 &&
 		    buffer[ISO7816.OFFSET_P1] != (byte)0xFF) {
@@ -1674,7 +1712,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	{
 		final byte[] buffer = apdu.getBuffer();
 		short lc, oldPinOff, newPinOff, idx;
-		OwnerPIN pin;
+		final OwnerPIN pin;
 
 		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00) {
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1736,7 +1774,7 @@ public class PivApplet extends Applet implements ExtendedLength
 	{
 		final byte[] buffer = apdu.getBuffer();
 		short lc, pukOff, newPinOff, idx;
-		OwnerPIN pin;
+		final OwnerPIN pin;
 
 		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00) {
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1767,7 +1805,7 @@ public class PivApplet extends Applet implements ExtendedLength
 		if (!pukPin.isValidated() &&
 		    !pukPin.check(buffer, pukOff, (byte)8)) {
 			ISOException.throwIt((short)(
-			    (short)0x63C0 | pin.getTriesRemaining()));
+			    (short)0x63C0 | pukPin.getTriesRemaining()));
 			return;
 		}
 
@@ -1789,6 +1827,91 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 		pin.update(buffer, newPinOff, (byte)8);
 		pin.resetAndUnblock();
+	}
+
+	private void
+	processSetPinRetries(APDU apdu)
+	{
+		final byte[] buffer = apdu.getBuffer();
+		final byte pinTries = buffer[ISO7816.OFFSET_P1];
+		final byte pukTries = buffer[ISO7816.OFFSET_P2];
+
+		if (!slots[SLOT_9B].flags[PivSlot.F_UNLOCKED]) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		if (!pivPin.isValidated()) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		pivPin = new OwnerPIN(pinTries, (byte)8);
+		pivPin.update(DEFAULT_PIN, (short)0, (byte)8);
+		pukPin = new OwnerPIN(pukTries, (byte)8);
+		pukPin.update(DEFAULT_PUK, (short)0, (byte)8);
+	}
+
+	private void
+	processReset(APDU apdu)
+	{
+		byte idx;
+
+		if (pivPin.getTriesRemaining() > (byte)0 ||
+		    pukPin.getTriesRemaining() > (byte)0) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		for (idx = (byte)0; idx < MAX_SLOTS; ++idx) {
+			final PivSlot slot = slots[idx];
+			if (slot == null)
+				continue;
+			if (slot.asym != null)
+				slot.asym.getPrivate().clearKey();
+			slot.asymAlg = (byte)-1;
+			slot.imported = false;
+			if (slot.cert != null) {
+				slot.cert.len = (short)0;
+			}
+		}
+
+		for (idx = (byte)0; idx < TAG_MAX; ++idx) {
+			final File file = files[idx];
+			if (file == null)
+				continue;
+			file.len = (short)0;
+		}
+
+		final DESKey dk = (DESKey)slots[SLOT_9B].sym;
+		dk.setKey(DEFAULT_ADMIN_KEY, (short)0);
+
+		pivPin = new OwnerPIN((byte)5, (byte)8);
+		pivPin.update(DEFAULT_PIN, (short)0, (byte)8);
+		pukPin = new OwnerPIN((byte)3, (byte)8);
+		pukPin.update(DEFAULT_PUK, (short)0, (byte)8);
+
+		randData.generateData(guid, (short)0, (short)16);
+
+		randData.generateData(cardId, (short)CARD_ID_FIXED.length,
+		    (short)(21 - (short)CARD_ID_FIXED.length));
+
+		randData.generateData(serial, (short)0, (short)4);
+		serial[0] |= (byte)0x80;
+
+		initCARDCAP();
+		initCHUID();
+		initKEYHIST();
+		initAttestation();
+
+		try {
+			JCSystem.requestObjectDeletion();
+		} catch (Exception e) {
+			incoming.gcBlewUp = true;
+		}
 	}
 
 	private void
@@ -2071,10 +2194,13 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		final short len = outgoing.available();
 
-		files[TAG_CARDCAP] = new File();
-		files[TAG_CARDCAP].len = len;
-		files[TAG_CARDCAP].data = new byte[len];
-		outgoing.read(files[TAG_CARDCAP].data, (short)0, len);
+		if (files[TAG_CARDCAP] == null)
+			files[TAG_CARDCAP] = new File();
+		final File f = files[TAG_CARDCAP];
+		f.len = len;
+		if (f.data == null || f.data.length < len)
+			f.data = new byte[len];
+		outgoing.read(f.data, (short)0, len);
 	}
 
 	private void
@@ -2109,10 +2235,13 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		final short len = outgoing.available();
 
-		files[TAG_CHUID] = new File();
-		files[TAG_CHUID].len = len;
-		files[TAG_CHUID].data = new byte[len];
-		outgoing.read(files[TAG_CHUID].data, (short)0, len);
+		if (files[TAG_CHUID] == null)
+			files[TAG_CHUID] = new File();
+		final File f = files[TAG_CHUID];
+		f.len = len;
+		if (f.data == null || f.data.length < len)
+			f.data = new byte[len];
+		outgoing.read(f.data, (short)0, len);
 	}
 
 	private void
@@ -2136,10 +2265,13 @@ public class PivApplet extends Applet implements ExtendedLength
 
 		final short len = outgoing.available();
 
-		files[TAG_KEYHIST] = new File();
-		files[TAG_KEYHIST].len = len;
-		files[TAG_KEYHIST].data = new byte[len];
-		outgoing.read(files[TAG_KEYHIST].data, (short)0, len);
+		if (files[TAG_KEYHIST] == null)
+			files[TAG_KEYHIST] = new File();
+		final File f = files[TAG_KEYHIST];
+		f.len = len;
+		if (f.data == null || f.data.length < len)
+			f.data = new byte[len];
+		outgoing.read(f.data, (short)0, len);
 	}
 
 	private void
@@ -2180,7 +2312,8 @@ public class PivApplet extends Applet implements ExtendedLength
 		final short len = outgoing.available();
 		final File file = atslot.cert;
 
-		file.data = new byte[len];
+		if (file.data == null || file.data.length < len)
+			file.data = new byte[len];
 		file.len = outgoing.read(file.data, (short)0, len);
 
 		outgoing.reset();
