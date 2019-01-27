@@ -194,6 +194,11 @@ public class PivApplet extends Applet implements ExtendedLength
 	private static final byte TAG_MAX = TAG_CERT_8C;
 	private File[] files = null;
 
+	private static final byte TAG_YK_PIVMAN = (byte)0x00;
+	private static final byte TAG_YK_ATTEST = (byte)0x01;
+	private static final byte YK_TAG_MAX = TAG_YK_ATTEST;
+	private File[] ykFiles = null;
+
 	private static final byte ALG_EC_SVDP_DH_PLAIN = (byte)3;
 	private static final byte ALG_EC_SVDP_DHC_PLAIN = (byte)4;
 	private static final byte ALG_RSA_SHA_256_PKCS1 = (byte)40;
@@ -296,7 +301,8 @@ public class PivApplet extends Applet implements ExtendedLength
 			slots[i] = new PivSlot((byte)((byte)0x82 + i));
 		slots[SLOT_F9] = new PivSlot((byte)0xF9);
 
-		files = new File[TAG_MAX];
+		files = new File[TAG_MAX + 1];
+		ykFiles = new File[YK_TAG_MAX + 1];
 
 		incoming = new SGList();
 		outgoing = new SGList();
@@ -354,7 +360,8 @@ public class PivApplet extends Applet implements ExtendedLength
 		files[TAG_PRINTED_INFO].contact = File.P_PIN;
 		files[TAG_PRINTED_INFO].contactless = File.P_PIN;
 
-		slots[SLOT_F9].cert = new File();
+		ykFiles[TAG_YK_ATTEST] = new File();
+		slots[SLOT_F9].cert = ykFiles[TAG_YK_ATTEST];
 
 		initCARDCAP();
 		initCHUID();
@@ -1959,8 +1966,14 @@ public class PivApplet extends Applet implements ExtendedLength
 				return;
 			}
 
-			if (tag1 == (byte)0xFF && tag2 == (byte)0x01) {
-				file = slots[SLOT_F9].cert;
+			if (tag1 == (byte)0xFF) {
+				if (tag2 < 0 || tag2 > YK_TAG_MAX) {
+					file = null;
+				} else {
+					if (ykFiles[tag2] == null)
+						ykFiles[tag2] = new File();
+					file = ykFiles[tag2];
+				}
 			} else if (tag1 == (byte)0xC1) {
 				if (tag2 < 0 || tag2 > TAG_MAX) {
 					file = null;
@@ -2056,8 +2069,12 @@ public class PivApplet extends Applet implements ExtendedLength
 				return;
 			}
 
-			if (tag1 == (byte)0xFF && tag2 == (byte)0x01) {
-				file = slots[SLOT_F9].cert;
+			if (tag1 == (byte)0xFF) {
+				if (tag2 < 0 || tag2 > YK_TAG_MAX) {
+					file = null;
+				} else {
+					file = ykFiles[tag2];
+				}
 			} else if (tag1 == (byte)0xC1) {
 				if (tag2 < 0 || tag2 > TAG_MAX) {
 					file = null;
