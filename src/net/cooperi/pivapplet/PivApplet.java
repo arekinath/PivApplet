@@ -1018,6 +1018,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			final RSAPrivateCrtKey rprivk =
 			    (RSAPrivateCrtKey)slot.asym.getPrivate();
 			rpubk.clearKey();
+			rprivk.clearKey();
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
@@ -1120,6 +1121,7 @@ public class PivApplet extends Applet implements ExtendedLength
 			final ECPrivateKey eprivk =
 			    (ECPrivateKey)slot.asym.getPrivate();
 			epubk.clearKey();
+			eprivk.clearKey();
 
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
@@ -1199,6 +1201,12 @@ public class PivApplet extends Applet implements ExtendedLength
 		}
 
 		tlv.finish();
+
+		if (!slot.asym.getPrivate().isInitialized()) {
+			slot.asym.getPrivate().clearKey();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
 	}
 
 	private void
