@@ -21,6 +21,12 @@ public class Buffer {
 #endif
 	public static final short EEPROM_ALLOC_SIZE = 1024;
 
+#if APPLET_SIMULATOR
+	public static final short RAM_ALLOC_MAX_INDEX = 2;
+#else
+	public static final short RAM_ALLOC_MAX_INDEX = 8;
+#endif
+
 	public static final byte OFFSET = 0;
 	public static final byte LEN = 1;
 
@@ -28,16 +34,24 @@ public class Buffer {
 	public boolean isDynamic;
 	public boolean isTransient;
 	public short[] state;
+	public final short index;
 
 	public
-	Buffer()
+	Buffer(short idx)
 	{
+		index = idx;
 		state = JCSystem.makeTransientShortArray((short)(LEN + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
 		isDynamic = false;
 		isTransient = false;
 		state[OFFSET] = (short)0;
 		state[LEN] = (short)0;
+	}
+
+	public
+	Buffer()
+	{
+		this((short)0);
 	}
 
 	public short
@@ -64,6 +78,14 @@ public class Buffer {
 		}
 
 		isDynamic = true;
+
+		if (index > RAM_ALLOC_MAX_INDEX) {
+			isTransient = false;
+			data = new byte[EEPROM_ALLOC_SIZE];
+			state[OFFSET] = (short)0;
+			state[LEN] = (short)EEPROM_ALLOC_SIZE;
+			return;
+		}
 
 		try {
 			data = JCSystem.makeTransientByteArray(RAM_ALLOC_SIZE,

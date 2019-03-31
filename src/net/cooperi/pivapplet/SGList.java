@@ -36,7 +36,7 @@ public class SGList implements Readable {
 	{
 		buffers = new Buffer[MAX_BUFS];
 		for (short i = 0; i < MAX_BUFS; ++i)
-			buffers[i] = new Buffer();
+			buffers[i] = new Buffer(i);
 		state = JCSystem.makeTransientShortArray((short)(STATE_MAX + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
 		this.reset();
@@ -241,6 +241,9 @@ public class SGList implements Readable {
 			if (buf.data == null || buf.state[Buffer.LEN] == 0)
 				buf.allocTransient();
 			if (buf.state[Buffer.LEN] < len) {
+				buf.state[Buffer.LEN] = 0;
+				if (buf.state[Buffer.OFFSET] == 0)
+					buf.state[Buffer.OFFSET] = 1;
 				continue;
 			}
 			into.data = buf.data;

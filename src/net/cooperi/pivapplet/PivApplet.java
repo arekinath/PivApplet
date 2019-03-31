@@ -215,6 +215,12 @@ public class PivApplet extends Applet
 		applet.register();
 	}
 
+#if APPLET_USE_RESET_MEM
+	private static final boolean useResetMem = true;
+#else
+	private static final boolean useResetMem = false;
+#endif
+
 	protected
 	PivApplet()
 	{
@@ -222,28 +228,30 @@ public class PivApplet extends Applet
 		tripleDes = Cipher.getInstance(Cipher.ALG_DES_CBC_NOPAD, false);
 
 #if PIV_SUPPORT_RSA
-		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
+		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, useResetMem);
 
+#if YKPIV_ATTESTATION
 		try {
 			rsaSha = Signature.getInstance(
-			    Signature.ALG_RSA_SHA_PKCS1, false);
+			    Signature.ALG_RSA_SHA_PKCS1, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
 		try {
 			rsaSha256 = Signature.getInstance(
-			    ALG_RSA_SHA_256_PKCS1, false);
+			    ALG_RSA_SHA_256_PKCS1, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
 #endif
+#endif
 
 #if PIV_SUPPORT_EC
 		try {
 			ecdh = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN,
-			    false);
+			    useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
@@ -252,7 +260,7 @@ public class PivApplet extends Applet
 		if (ecdh == null) {
 			try {
 				ecdh = KeyAgreement.getInstance(
-				    ALG_EC_SVDP_DHC_PLAIN, false);
+				    ALG_EC_SVDP_DHC_PLAIN, useResetMem);
 			} catch (CryptoException ex) {
 				if (ex.getReason() !=
 				    CryptoException.NO_SUCH_ALGORITHM)
@@ -263,7 +271,7 @@ public class PivApplet extends Applet
 		if (ecdh == null) {
 			try {
 				ecdhSha = KeyAgreement.getInstance(
-				    KeyAgreement.ALG_EC_SVDP_DH, false);
+				    KeyAgreement.ALG_EC_SVDP_DH, useResetMem);
 			} catch (CryptoException ex) {
 				if (ex.getReason() !=
 				    CryptoException.NO_SUCH_ALGORITHM)
@@ -273,14 +281,14 @@ public class PivApplet extends Applet
 
 		try {
 			ecdsaP256Sha = Signature.getInstance(
-			    Signature.ALG_ECDSA_SHA, false);
+			    Signature.ALG_ECDSA_SHA, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
 		try {
 			ecdsaP256Sha256 = Signature.getInstance(
-			    ECParams.ALG_ECDSA_SHA_256, false);
+			    ECParams.ALG_ECDSA_SHA_256, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);

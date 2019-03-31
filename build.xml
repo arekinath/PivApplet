@@ -35,6 +35,19 @@
     support for this (due to bugs in getOffsetCdata()).
   -->
   <property name="APPLET_EXTLEN" value="true" />
+  <!--
+    APPLET_USE_RESET_MEM: use CLEAR_ON_RESET memory in cipher and signature
+    instances (rather than CLEAR_ON_DESELECT). Only set this if you trust other
+    applets on the card not to leak info left in RAM after deselect (e.g.
+    PivApplet is the only applet installed). Some cards are very short on
+    CLEAR_ON_DESELECT memory and need this to use RSA.
+  -->
+  <property name="APPLET_USE_RESET_MEM" value="false" />
+  <!--
+    APPLET_SIMULATOR: tries to pretend we have memory limits like a real card
+    when running in the simulator. Useful for testing/debugging SGList code.
+  -->
+  <property name="APPLET_SIMULATOR" value="false" />
 
   <target name="preprocess" description="proprocess java source">
     <taskdef resource="jpp.xml" classpath="ext/jpp-1.0.3.jar" />
