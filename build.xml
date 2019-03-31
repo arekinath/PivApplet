@@ -1,19 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="JavaCard PIV applet" default="dist" basedir=".">
   <description>Builds the project. </description>
-  <target name="dist" description="generate the distribution">
+
+  <!-- feature controls -->
+
+  <!--
+    PIV_SUPPORT_*: choose whether RSA/EC family algorithms are supported.
+  -->
+  <property name="PIV_SUPPORT_RSA" value="true" />
+  <property name="PIV_SUPPORT_EC" value="true" />
+
+  <!--
+    PIV_USE_EC_PRECOMPHASH: build with support for using signPreComputedHash()
+    for EC signing. This can only work with JC3.0.5, but will build an applet
+    that is capable of PIV standards-compliant EC signing.
+  -->
+  <property name="PIV_USE_EC_PRECOMPHASH" value="false" />
+
+  <!--
+    PIV_STRICT_CONTACTLESS: if true, strictly enforce the PIV spec requirements
+    around which slots and keys are allowed to be used over the contactless
+    interface. If false, allow anything to be used over contactless.
+  -->
+  <property name="PIV_STRICT_CONTACTLESS" value="true" />
+  <!--
+    YKPIV_ATTESTATION: whether to build support for YubicoPIV attestation.
+    Without this, the attestation slots and commands will all return
+    unsupported errors.
+  -->
+  <property name="YKPIV_ATTESTATION" value="true" />
+  <!--
+    APPLET_EXTLEN: build with support for extended length APDUs. This doesn't
+    work properly on all cards and some may need to use an applet built without
+    support for this (due to bugs in getOffsetCdata()).
+  -->
+  <property name="APPLET_EXTLEN" value="true" />
+
+  <target name="preprocess" description="proprocess java source">
+    <taskdef resource="jpp.xml" classpath="ext/jpp-1.0.3.jar" />
+    <jpp destdir="src-gen" readonly="true" verbose="false">
+      <fileset dir="src/" includes="**/*.java" />
+    </jpp>
+  </target>
+
+  <target name="dist" depends="preprocess" description="generate the distribution">
     <tstamp/>
     <ant dir="ext/ant"/>
     <!-- Create the distribution directory -->
     <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ext/ant/ant-javacard.jar"/>
     <javacard>
-      <cap aid="a0:00:00:03:08:00:00:10" output="bin/PivApplet.cap" sources="src" classes="bin" version="1.0">
+      <cap aid="a0:00:00:03:08:00:00:10" output="bin/PivApplet.cap" sources="src-gen" classes="bin" version="1.0">
         <applet class="net.cooperi.pivapplet.PivApplet" aid="a0:00:00:03:08:00:00:10:00:01:00"/>
       </cap>
     </javacard>
   </target>
+
   <target name="clean" description="clean up">
     <!-- Delete the built applet -->
-    <delete dir="PivApplet.cap"/>
+    <delete dir="bin"/>
+    <delete dir="src-gen"/>
   </target>
+
 </project>

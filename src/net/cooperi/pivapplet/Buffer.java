@@ -12,8 +12,13 @@ import javacard.framework.JCSystem;
 import javacard.framework.SystemException;
 
 public class Buffer {
+#if PIV_SUPPORT_RSA
 	public static final short RAM_ALLOC_SIZE = 512;
 	public static final short RAM_ALLOC_SIZE_2 = 256;
+#else
+	public static final short RAM_ALLOC_SIZE = 256;
+	public static final short RAM_ALLOC_SIZE_2 = 128;
+#endif
 	public static final short EEPROM_ALLOC_SIZE = 1024;
 
 	public static final byte OFFSET = 0;

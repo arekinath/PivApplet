@@ -13,6 +13,7 @@ import javacard.security.ECKey;
 public class ECParams {
 	public final static byte ALG_ECDSA_SHA_256 = (byte)33;
 
+#if PIV_SUPPORT_EC
 	public static final byte[] nistp256_p = {
 	    (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0x0,
 	    (byte)0x0, (byte)0x0, (byte)0x1, (byte)0x0, (byte)0x0, (byte)0x0,
@@ -80,4 +81,5 @@ public class ECParams {
 		eckey.setR(nistp256_R, (short)0, (short)(nistp256_R.length));
 		//eckey.setK((short)1);
 	}
+#endif
 }
