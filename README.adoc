@@ -9,7 +9,7 @@
 ## About
 
 This is an attempt at making a PIV (NIST SP 800-73-4) compatible JavaCard
-applet. Current target is JavaCard 2.2.2, with 2-3k of transient memory.
+applet. Target is JavaCard 2.2.2+, with 1-3k of transient memory.
 
 ## Current status
 
@@ -17,8 +17,11 @@ What works:
 
  * OpenSC, MacOS (`piv.tokend` for login), Windows PIV
  * RSA-1024 and -2048 key generation on card, signing
- * EC P-256 key generation (but no ECDSA)
+ * EC P-256 key generation
  * EC Diffie-Hellman on P-256
+ * ECDSA (only when using JavaCard 3.0.4+ builds)
+    - JC 2.2.2 builds have a hash-on-card workaround (see below), but this is
+      not standard PIV
  * PINs and change of PIN, PUK reset
  * Most https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
    YubiKeyPIV-compatible extensions] are implemented and working:
@@ -33,11 +36,6 @@ What works:
 
 What doesn't work:
 
- * PIV-compatible ECDSA (probably not fixable without JavaCard 3.0.5 or
-   proprietary APIs)
-   - There is support for it in the code, but it will not work without
-     a client that is specifically aware of the double-hashing issue (uses
-     a proprietary algorithm ID).
  * YubicoPIV touch policy
    - No standard JavaCard APIs for accessing GPIO or sensors so this is
      probably not happening.
@@ -108,16 +106,18 @@ work with PivApplet.)
 
 ## ECDSA hash-on-card extension
 
-The applet supports an extension for doing ECDSA with hash-on-card, which client
-software will have to specifically add support for if it wants to use ECDSA
-signing with this applet. As of writing, the only PIV client with support
-for this extension known to the authors is
-https://github.com/arekinath/piv-agent[`piv-agent`].
+When built for JavaCard 2.2.2, this applet supports an extension for doing ECDSA
+with hash-on-card, which client software will have to specifically add support
+for if it wants to use ECDSA signing. As of writing, the only PIV client with
+support for this extension known to the authors is
+https://github.com/arekinath/pivy[`pivy`].
 
 Unfortunately, regular PIV ECDSA signing is not possible with the JavaCard
-standard crypto functions, which only support a single operation that combines
-hashing and signing. The current PIV standard demands that the data to be
-signed is hashed by the host, and then the hash is sent to the card.
+standard crypto functions in JC2.2.2 (it is possible in JC3.0.4 and later,
+and builds of this applet for 3.0.4 use the standardised method), which only
+support a single operation that combines hashing and signing. The current PIV
+standard demands that the data to be signed is hashed by the host, and then the
+hash is sent to the card.
 
 In addition to the algorithm ID `0x11` for `ECCP256`, we introduce two new IDs,
 `ECCP256-SHA1` (`0xF0`) and `ECCP256-SHA256` (`0xF1`). For key generation the
@@ -162,6 +162,21 @@ $ ant
 
 The capfile will be output in the `./bin` directory, along with the `.class`
 files (which can be used with jCardSim).
+
+The applet can be configured to suit different cards or needs by adjusting
+the feature flags in `build.xml` before running `ant`.
+
+Currently available feature flags:
+
+|===
+|`PIV_SUPPORT_RSA`        | Enable RSA support
+|`PIV_SUPPORT_EC`         | Enable ECDSA and ECDH support
+|`PIV_USE_EC_PRECOMPHASH` | Use JC3.0.4+ API to allow standardised PIV ECDSA (rather than the hash-on-card extension, which will be disabled)
+|`PIV_STRICT_CONTACTLESS` | Block most slots and keys from use over contactless (strictly conform to the PIV spec)
+|`YKPIV_ATTESTATION`      | Enable YubicoPIV-style attestation slot and command
+|`APPLET_USE_RESET_MEM`   | Use `CLEAR_ON_RESET` memory for Cipher and Signature intermediate data. This is needed for cards with low amounts of transient `CLEAR_ON_DESELECT` memory (e.g. J3H145, JC30M48CR)
+|`APPLET_EXTLEN`          | Support for extended APDUs. Some cards have bugs that make this feature malfunction (e.g. ACOSJ)
+|===
 
 ## Simulation
 
