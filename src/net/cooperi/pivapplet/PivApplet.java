@@ -2814,6 +2814,20 @@ public class PivApplet extends Applet
 		writeX509CertInfo(slot);
 
 		wtlv.push(ASN1_SEQ);
+#if PIV_SUPPORT_EC
+		if (atslot.asymAlg == PIV_ALG_ECCP256) {
+			wtlv.push(ASN1_OID);
+			if (ecdsaP256Sha256 != null) {
+				wtlv.write(OID_ECDSA_SHA256, (short)0,
+				    (short)OID_ECDSA_SHA256.length);
+			} else if (ecdsaP256Sha != null) {
+				wtlv.write(OID_ECDSA_SHA, (short)0,
+				    (short)OID_ECDSA_SHA.length);
+			}
+			wtlv.pop();
+		}
+#endif
+#if PIV_SUPPORT_RSA
 		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
 		    atslot.asymAlg == PIV_ALG_RSA2048) {
 			wtlv.push(ASN1_OID);
@@ -2827,17 +2841,8 @@ public class PivApplet extends Applet
 			wtlv.pop();
 			wtlv.push(ASN1_NULL);
 			wtlv.pop();
-		} else if (atslot.asymAlg == PIV_ALG_ECCP256) {
-			wtlv.push(ASN1_OID);
-			if (ecdsaP256Sha256 != null) {
-				wtlv.write(OID_ECDSA_SHA256, (short)0,
-				    (short)OID_ECDSA_SHA256.length);
-			} else if (ecdsaP256Sha != null) {
-				wtlv.write(OID_ECDSA_SHA, (short)0,
-				    (short)OID_ECDSA_SHA.length);
-			}
-			wtlv.pop();
 		}
+#endif
 		wtlv.pop();
 
 		wtlv.push64k(ASN1_BITSTRING);
