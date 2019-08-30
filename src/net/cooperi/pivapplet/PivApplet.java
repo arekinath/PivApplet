@@ -35,7 +35,9 @@ import javacard.security.Signature;
 import javacard.security.SecretKey;
 import javacard.security.MessageDigest;
 import javacardx.crypto.Cipher;
+#if APPLET_EXTLEN
 import javacardx.apdu.ExtendedLength;
+#endif
 
 #if APPLET_EXTLEN
 public class PivApplet extends Applet implements ExtendedLength
@@ -311,6 +313,7 @@ public class PivApplet extends Applet
 		serial = new byte[4];
 		randData.generateData(serial, (short)0, (short)4);
 		serial[0] |= (byte)0x80;
+		serial[0] &= (byte)0x7F;
 
 		certSerial = new byte[16];
 		fascn = new byte[25];
