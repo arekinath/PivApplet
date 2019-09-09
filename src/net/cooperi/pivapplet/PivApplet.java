@@ -37,11 +37,7 @@ import javacard.security.MessageDigest;
 import javacardx.crypto.Cipher;
 import javacardx.apdu.ExtendedLength;
 
-#if APPLET_EXTLEN
-public class PivApplet extends Applet implements ExtendedLength
-#else
 public class PivApplet extends Applet
-#endif
 {
 	private static final byte[] PIV_AID = {
 	    (byte)0xa0, (byte)0x00, (byte)0x00, (byte)0x03, (byte)0x08,
@@ -215,11 +211,7 @@ public class PivApplet extends Applet
 		applet.register();
 	}
 
-#if APPLET_USE_RESET_MEM
-	private static final boolean useResetMem = true;
-#else
 	private static final boolean useResetMem = false;
-#endif
 
 	protected
 	PivApplet()
@@ -227,10 +219,8 @@ public class PivApplet extends Applet
 		randData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 		tripleDes = Cipher.getInstance(Cipher.ALG_DES_CBC_NOPAD, false);
 
-#if PIV_SUPPORT_RSA
 		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, useResetMem);
 
-#if YKPIV_ATTESTATION
 		try {
 			rsaSha = Signature.getInstance(
 			    Signature.ALG_RSA_SHA_PKCS1, useResetMem);
@@ -245,10 +235,7 @@ public class PivApplet extends Applet
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
-#endif
-#endif
 
-#if PIV_SUPPORT_EC
 		try {
 			ecdh = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN,
 			    useResetMem);
@@ -293,7 +280,6 @@ public class PivApplet extends Applet
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
-#endif
 
 		challenge = JCSystem.makeTransientByteArray((short)16,
 		    JCSystem.CLEAR_ON_DESELECT);
@@ -321,9 +307,7 @@ public class PivApplet extends Applet
 			slots[i] = new PivSlot((byte)((byte)0x9A + i));
 		for (byte i = SLOT_82; i <= SLOT_8C; ++i)
 			slots[i] = new PivSlot((byte)((byte)0x82 + i));
-#if YKPIV_ATTESTATION
 		slots[SLOT_F9] = new PivSlot((byte)0xF9);
-#endif
 
 		files = new File[TAG_MAX + 1];
 		ykFiles = new File[YK_TAG_MAX + 1];
@@ -378,26 +362,20 @@ public class PivApplet extends Applet
 		files[TAG_PRINTED_INFO] = new File();
 		files[TAG_PRINTED_INFO].contact = File.P_PIN;
 
-#if YKPIV_ATTESTATION
 		ykFiles[TAG_YK_ATTEST] = new File();
 		slots[SLOT_F9].cert = ykFiles[TAG_YK_ATTEST];
-#endif
 
-#if PIV_STRICT_CONTACTLESS
 		files[TAG_CERT_9A].contactless = File.P_NEVER;
 		files[TAG_CERT_9C].contactless = File.P_NEVER;
 		files[TAG_CERT_9D].contactless = File.P_NEVER;
 		files[TAG_FINGERPRINTS].contactless = File.P_NEVER;
 		files[TAG_PRINTED_INFO].contactless = File.P_PIN;
 		files[TAG_FACE].contactless = File.P_PIN;
-#endif
 
 		initCARDCAP();
 		initCHUID();
 		initKEYHIST();
-#if YKPIV_ATTESTATION
 		initAttestation();
-#endif
 	}
 
 	public void
@@ -472,11 +450,9 @@ public class PivApplet extends Applet
 		case INS_GET_RESPONSE:
 			continueResponse(apdu);
 			break;
-#if YKPIV_ATTESTATION
 		case INS_ATTEST:
 			processAttest(apdu);
 			break;
-#endif
 		case INS_GET_SERIAL:
 			processGetSerial(apdu);
 			break;
@@ -550,7 +526,6 @@ public class PivApplet extends Applet
 		apdu.sendBytes((short)0, len);
 	}
 
-#if YKPIV_ATTESTATION
 	private void
 	processAttest(APDU apdu)
 	{
@@ -584,7 +559,6 @@ public class PivApplet extends Applet
 
 		sendOutgoing(apdu);
 	}
-#endif
 
 	private void
 	processSGDebug(APDU apdu)
@@ -646,21 +620,17 @@ public class PivApplet extends Applet
 		wtlv.push((byte)0x80);
 		wtlv.writeByte(PIV_ALG_3DES);
 		wtlv.pop();
-#if PIV_SUPPORT_RSA
 		wtlv.push((byte)0x80);
 		wtlv.writeByte(PIV_ALG_RSA1024);
 		wtlv.pop();
 		wtlv.push((byte)0x80);
 		wtlv.writeByte(PIV_ALG_RSA2048);
 		wtlv.pop();
-#endif
-#if PIV_SUPPORT_EC
 		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256);
 			wtlv.pop();
 		}
-#if !PIV_USE_EC_PRECOMPHASH
 		if (ecdsaP256Sha != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
@@ -671,8 +641,6 @@ public class PivApplet extends Applet
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA256);
 			wtlv.pop();
 		}
-#endif
-#endif
 		wtlv.push((byte)0x06);
 		wtlv.pop();
 		wtlv.pop();
@@ -736,11 +704,7 @@ public class PivApplet extends Applet
 			incoming.reset();
 
 		short recvLen = apdu.setIncomingAndReceive();
-#if APPLET_EXTLEN
-		final short cdata = apdu.getOffsetCdata();
-#else
 		final short cdata = ISO7816.OFFSET_CDATA;
-#endif
 
 		while (recvLen > 0) {
 			incoming.write(buf, cdata, recvLen);
@@ -802,11 +766,7 @@ public class PivApplet extends Applet
 			return;
 		}
 
-#if APPLET_EXTLEN
-		apduStream.reset(apdu.getOffsetCdata(), lc);
-#else
 		apduStream.reset(ISO7816.OFFSET_CDATA, lc);
-#endif
 		tlv.start(apduStream);
 
 		if (tlv.readTag() != (byte)0xAC) {
@@ -886,7 +846,6 @@ public class PivApplet extends Applet
 		}
 
 		switch (alg) {
-#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 			if (slot.asym == null || slot.asymAlg != alg) {
 				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
@@ -901,8 +860,6 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
-#endif
-#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
 			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -924,7 +881,6 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
-#endif
 		default:
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
@@ -937,7 +893,6 @@ public class PivApplet extends Applet
 		wtlv.start(outgoing);
 
 		switch (alg) {
-#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
 			RSAPublicKey rpubk =
@@ -957,8 +912,6 @@ public class PivApplet extends Applet
 			wtlv.endReserve(cLen);
 			wtlv.pop();
 			break;
-#endif
-#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
 			ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
@@ -971,7 +924,6 @@ public class PivApplet extends Applet
 			wtlv.endReserve(cLen);
 			wtlv.pop();
 			break;
-#endif
 		default:
 			return;
 		}
@@ -1023,7 +975,6 @@ public class PivApplet extends Applet
 		tlv.start(incoming);
 
 		switch (alg) {
-#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 			if (slot.asym == null || slot.asymAlg != alg) {
 				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
@@ -1038,8 +989,6 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
-#endif
-#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
 			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
 				tlv.abort();
@@ -1062,7 +1011,6 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
-#endif
 		default:
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1072,7 +1020,6 @@ public class PivApplet extends Applet
 		slot.imported = true;
 
 		switch (alg) {
-#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
 			final RSAPublicKey rpubk =
@@ -1177,8 +1124,6 @@ public class PivApplet extends Applet
 				}
 			}
 			break;
-#endif
-#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
 			final ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
@@ -1258,7 +1203,6 @@ public class PivApplet extends Applet
 				}
 			}
 			break;
-#endif
 		default:
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1302,11 +1246,7 @@ public class PivApplet extends Applet
 			return;
 		}
 
-#if APPLET_EXTLEN
-		off = apdu.getOffsetCdata();
-#else
 		off = ISO7816.OFFSET_CDATA;
-#endif
 		final byte alg = buffer[off++];
 		final byte key = buffer[off++];
 		final byte keyLen = buffer[off++];
@@ -1584,7 +1524,6 @@ public class PivApplet extends Applet
 
 		case GA_TAG_RESPONSE:
 			if (tag == GA_TAG_EXP) {
-#if PIV_SUPPORT_EC
 				KeyAgreement ag;
 
 				if (alg == PIV_ALG_ECCP256_SHA1) {
@@ -1626,7 +1565,6 @@ public class PivApplet extends Applet
 				wtlv.end();
 				sendOutgoing(apdu);
 				break;
-#endif
 			}
 			if (tag != GA_TAG_CHALLENGE) {
 				tlv.abort();
@@ -1659,7 +1597,6 @@ public class PivApplet extends Applet
 				    tempBuf.offset(), sLen,
 				    outBuf.data, outBuf.offset());
 
-#if PIV_SUPPORT_RSA
 			} else if (slot.asymAlg == alg && (
 			    alg == PIV_ALG_RSA1024 || alg == PIV_ALG_RSA2048)) {
 				tlv.read(tempBuf, sLen);
@@ -1669,32 +1606,6 @@ public class PivApplet extends Applet
 				cLen = ci.doFinal(tempBuf.data,
 				    tempBuf.offset(), sLen,
 				    outBuf.data, outBuf.offset());
-#endif
-
-#if PIV_SUPPORT_EC
-
-#if PIV_USE_EC_PRECOMPHASH
-			} else if (slot.asymAlg == alg &&
-			    alg == PIV_ALG_ECCP256) {
-				if (sLen == 20) {
-					si = ecdsaP256Sha;
-				} else if (sLen == 32) {
-					si = ecdsaP256Sha256;
-				} else {
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
-					return;
-				}
-				tlv.read(tempBuf, sLen);
-				tlv.end();
-
-				si.init(slot.asym.getPrivate(),
-				    Signature.MODE_SIGN);
-				cLen = si.signPreComputedHash(tempBuf.data,
-				    tempBuf.offset(), sLen,
-				    outBuf.data, outBuf.offset());
-#endif
 
 			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
 				switch (alg) {
@@ -1724,7 +1635,6 @@ public class PivApplet extends Applet
 				tlv.end();
 				cLen = si.sign(null, (short)0, (short)0,
 				    outBuf.data, outBuf.offset());
-#endif
 			} else {
 				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -1784,11 +1694,7 @@ public class PivApplet extends Applet
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
-#if APPLET_EXTLEN
-		pinOff = apdu.getOffsetCdata();
-#else
 		pinOff = ISO7816.OFFSET_CDATA;
-#endif
 
 		if (lc == 0 && pin.isValidated()) {
 			ISOException.throwIt(ISO7816.SW_NO_ERROR);
@@ -1861,11 +1767,7 @@ public class PivApplet extends Applet
 			return;
 		}
 
-#if APPLET_EXTLEN
-		oldPinOff = apdu.getOffsetCdata();
-#else
 		oldPinOff = ISO7816.OFFSET_CDATA;
-#endif
 		if (lc != 16) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
@@ -1924,11 +1826,7 @@ public class PivApplet extends Applet
 			return;
 		}
 
-#if APPLET_EXTLEN
-		pukOff = apdu.getOffsetCdata();
-#else
 		pukOff = ISO7816.OFFSET_CDATA;
-#endif
 		if (lc != 16) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
@@ -2037,9 +1935,7 @@ public class PivApplet extends Applet
 		initCARDCAP();
 		initCHUID();
 		initKEYHIST();
-#if YKPIV_ATTESTATION
 		initAttestation();
-#endif
 
 		try {
 			JCSystem.requestObjectDeletion();
@@ -2172,11 +2068,7 @@ public class PivApplet extends Applet
 			return;
 		}
 
-#if APPLET_EXTLEN
-		apduStream.reset(apdu.getOffsetCdata(), lc);
-#else
 		apduStream.reset(ISO7816.OFFSET_CDATA, lc);
-#endif
 		tlv.start(apduStream);
 
 		tag = tlv.readTag();
@@ -2422,13 +2314,11 @@ public class PivApplet extends Applet
 		outgoing.read(f.data, (short)0, len);
 	}
 
-#if YKPIV_ATTESTATION
 	private void
 	initAttestation()
 	{
 		final PivSlot atslot = slots[SLOT_F9];
 
-#if PIV_SUPPORT_EC
 		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
 			atslot.asymAlg = PIV_ALG_ECCP256;
 			final ECPrivateKey ecPriv;
@@ -2469,7 +2359,6 @@ public class PivApplet extends Applet
 		outgoing.reset();
 		incoming.reset();
 		incoming.cullNonTransient();
-#endif
 	}
 
 	private static final byte ASN1_SEQ = (byte)0x30;
@@ -2485,7 +2374,6 @@ public class PivApplet extends Applet
 	private static final byte ASN1_APP_0 = (byte)0xA0;
 	private static final byte ASN1_APP_3 = (byte)0xA3;
 
-#if PIV_SUPPORT_RSA
 	private static final byte[] OID_RSA = {
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7,
 	    (byte)0x0D, (byte)0x01, (byte)0x01, (byte)0x01
@@ -2498,8 +2386,6 @@ public class PivApplet extends Applet
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7,
 	    (byte)0x0D, (byte)0x01, (byte)0x01, (byte)0x0B
 	};
-#endif
-#if PIV_SUPPORT_EC
 	private static final byte[] OID_ECDSA_SHA = {
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
 	    (byte)0x04, (byte)0x01
@@ -2508,12 +2394,10 @@ public class PivApplet extends Applet
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
 	    (byte)0x04, (byte)0x03, (byte)0x02
 	};
-#endif
 
 	private static final byte[] OID_CN = {
 	    (byte)0x55, (byte)0x04, (byte)0x03
 	};
-#if PIV_SUPPORT_EC
 	private static final byte[] OID_ECPUBKEY = {
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
 	    (byte)0x02, (byte)0x01
@@ -2522,7 +2406,6 @@ public class PivApplet extends Applet
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
 	    (byte)0x03, (byte)0x01, (byte)0x07
 	};
-#endif
 	private static final byte[] OID_YUBICOX = {
 	    (byte)0x2B, (byte)0x06, (byte)0x01, (byte)0x04, (byte)0x01,
 	    (byte)0x82, (byte)0xC4, (byte)0x0A, (byte)0x03
@@ -2583,7 +2466,6 @@ public class PivApplet extends Applet
 
 		/* Signature alg */
 		wtlv.push(ASN1_SEQ);
-#if PIV_SUPPORT_RSA
 		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
 		    atslot.asymAlg == PIV_ALG_RSA2048) {
 			wtlv.push(ASN1_OID);
@@ -2598,8 +2480,6 @@ public class PivApplet extends Applet
 			wtlv.push(ASN1_NULL);
 			wtlv.pop();
 		}
-#endif
-#if PIV_SUPPORT_EC
 		if (atslot.asymAlg == PIV_ALG_ECCP256) {
 			wtlv.push(ASN1_OID);
 			if (ecdsaP256Sha256 != null) {
@@ -2611,7 +2491,6 @@ public class PivApplet extends Applet
 			}
 			wtlv.pop();
 		}
-#endif
 		wtlv.pop();
 
 		/* Issuer */
@@ -2659,7 +2538,6 @@ public class PivApplet extends Applet
 		wtlv.pop();
 
 		/* Public key */
-#if PIV_SUPPORT_EC
 		if (slot.asymAlg == PIV_ALG_ECCP256) {
 			final ECPublicKey ecpub =
 			    (ECPublicKey)slot.asym.getPublic();
@@ -2683,8 +2561,6 @@ public class PivApplet extends Applet
 			wtlv.endReserve(len);
 			wtlv.pop();
 		}
-#endif
-#if PIV_SUPPORT_RSA
 		if (slot.asymAlg == PIV_ALG_RSA1024 ||
 		    slot.asymAlg == PIV_ALG_RSA2048) {
 			final RSAPublicKey rpubk =
@@ -2722,7 +2598,6 @@ public class PivApplet extends Applet
 			wtlv.pop();
 			wtlv.pop();
 		}
-#endif
 		wtlv.pop();
 
 		/* Extensions */
@@ -2853,5 +2728,4 @@ public class PivApplet extends Applet
 			wtlv.pop();
 		wtlv.end();
 	}
-#endif
 }
