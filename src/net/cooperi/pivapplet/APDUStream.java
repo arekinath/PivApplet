@@ -24,7 +24,7 @@ public class APDUStream implements Readable {
 	APDUStream()
 	{
 		s = JCSystem.makeTransientShortArray((short)2,
-		    JCSystem.CLEAR_ON_DESELECT);
+			JCSystem.CLEAR_ON_DESELECT);
 	}
 
 	public void

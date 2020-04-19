@@ -12,20 +12,20 @@ import javacard.framework.JCSystem;
 import javacard.framework.SystemException;
 
 public class Buffer {
-#if PIV_SUPPORT_RSA
+//#if PIV_SUPPORT_RSA
 	public static final short RAM_ALLOC_SIZE = 512;
 	public static final short RAM_ALLOC_SIZE_2 = 256;
-#else
+/*#else
 	public static final short RAM_ALLOC_SIZE = 256;
 	public static final short RAM_ALLOC_SIZE_2 = 128;
-#endif
+#endif*/
 	public static final short EEPROM_ALLOC_SIZE = 1024;
 
-#if APPLET_SIMULATOR
+/*#if APPLET_SIMULATOR
 	public static final short RAM_ALLOC_MAX_INDEX = 2;
-#else
+#else*/
 	public static final short RAM_ALLOC_MAX_INDEX = 8;
-#endif
+//#endif
 
 	public static final byte OFFSET = 0;
 	public static final byte LEN = 1;
