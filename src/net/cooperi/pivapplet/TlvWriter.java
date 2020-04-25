@@ -8,11 +8,7 @@
 
 package net.cooperi.pivapplet;
 
-import javacard.framework.APDU;
 import javacard.framework.JCSystem;
-import javacard.framework.Util;
-import javacard.framework.ISO7816;
-import javacard.framework.ISOException;
 
 public class TlvWriter {
 	private static final short STACK_SIZE = (short)8;
@@ -28,7 +24,7 @@ public class TlvWriter {
 	private SGList scratch = null;
 
 	public
-	TlvWriter(SGList scratch)
+	TlvWriter(BufferManager bufmgr)
 	{
 		target = JCSystem.makeTransientObjectArray((short)1,
 		    JCSystem.CLEAR_ON_DESELECT);
@@ -40,7 +36,7 @@ public class TlvWriter {
 		    JCSystem.CLEAR_ON_DESELECT);
 		s = JCSystem.makeTransientShortArray((short)(PTR + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
-		this.scratch = scratch;
+		this.scratch = new SGList(bufmgr, (short)4);
 	}
 
 	public void
@@ -49,6 +45,17 @@ public class TlvWriter {
 		target[0] = (Object)newTarget;
 		s[PTR] = (short)0;
 		scratch.reset();
+	}
+
+	/*
+	 * Set our scratch SGList to use the APDU buffer space first -- so
+	 * if everything we write fits into the APDU buffer, we don't have to
+	 * double-copy it.
+	 */
+	public void
+	useApdu(final short offset, final short len)
+	{
+		scratch.useApdu(offset, len);
 	}
 
 	private void
@@ -62,7 +69,7 @@ public class TlvWriter {
 	}
 
 	public void
-	startReserve(short len, Buffer into)
+	startReserve(short len, TransientBuffer into)
 	{
 		scratch.startReserve(len, into);
 	}
@@ -142,13 +149,20 @@ public class TlvWriter {
 	public void
 	write(byte[] data, short off, short len)
 	{
-		if (len <= 16) {
+		/* For short strings, just write directly into scratch. */
+		if (len <= 32) {
 			scratch.write(data, off, len);
 			return;
 		}
 		final SGList dest = (SGList)target[0];
 		scratch.readInto(dest, scratch.available());
 		dest.append(data, off, len);
+	}
+
+	public void
+	write(Buffer buf)
+	{
+		write(buf.data(), buf.rpos(), buf.remaining());
 	}
 
 	public void

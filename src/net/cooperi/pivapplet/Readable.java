@@ -14,8 +14,8 @@ public interface Readable {
 	public byte readByte();
 	public short readShort();
 	public short read(byte[] dest, short offset, short maxLen);
-	public short read(Buffer into, short maxLen);
-	public short readPartial(Buffer into, short maxLen);
+	public short read(TransientBuffer into, short maxLen);
+	public short readPartial(TransientBuffer into, short maxLen);
 	public void skip(short len);
 	public void rewind();
 }

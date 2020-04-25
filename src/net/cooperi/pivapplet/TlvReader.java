@@ -8,9 +8,7 @@
 
 package net.cooperi.pivapplet;
 
-import javacard.framework.APDU;
 import javacard.framework.JCSystem;
-import javacard.framework.Util;
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 
@@ -191,7 +189,7 @@ public class TlvReader {
 	}
 
 	public short
-	read(Buffer into, short maxLen)
+	read(TransientBuffer into, short maxLen)
 	{
 		final Readable src = (Readable)target[0];
 		final short toCopy = (s[LEN] > maxLen) ? maxLen : s[LEN];
@@ -202,7 +200,7 @@ public class TlvReader {
 	}
 
 	public short
-	readPartial(Buffer into, short maxLen)
+	readPartial(TransientBuffer into, short maxLen)
 	{
 		final Readable src = (Readable)target[0];
 		final short toCopy = (s[LEN] > maxLen) ? maxLen : s[LEN];

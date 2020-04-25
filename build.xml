@@ -15,7 +15,7 @@
     for EC signing. This can only work with JC3.0.5, but will build an applet
     that is capable of PIV standards-compliant EC signing.
   -->
-  <property name="PIV_USE_EC_PRECOMPHASH" value="false" />
+  <property name="PIV_USE_EC_PRECOMPHASH" value="true" />
 
   <!--
     PIV_STRICT_CONTACTLESS: if true, strictly enforce the PIV spec requirements
