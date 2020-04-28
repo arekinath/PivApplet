@@ -145,8 +145,9 @@ public class PivApplet extends Applet
 	private RandomData randData = null;
 	private Cipher tripleDes = null;
 	private Cipher rsaPkcs1 = null;
-	private Signature ecdsaP256Sha = null;
-	private Signature ecdsaP256Sha256 = null;
+	private Signature ecdsaSha = null;
+	private Signature ecdsaSha256 = null;
+	private Signature ecdsaSha384 = null;
 	private Signature rsaSha = null;
 	private Signature rsaSha256 = null;
 	private KeyAgreement ecdh = null;
@@ -181,6 +182,9 @@ public class PivApplet extends Applet
 
 	private static final byte PIV_ALG_ECCP256_SHA1 = (byte)0xf0;
 	private static final byte PIV_ALG_ECCP256_SHA256 = (byte)0xf1;
+	private static final byte PIV_ALG_ECCP384_SHA1 = (byte)0xf2;
+	private static final byte PIV_ALG_ECCP384_SHA256 = (byte)0xf3;
+	private static final byte PIV_ALG_ECCP384_SHA384 = (byte)0xf4;
 
 	private static final byte GA_TAG_WITNESS = (byte)0x80;
 	private static final byte GA_TAG_CHALLENGE = (byte)0x81;
@@ -297,15 +301,22 @@ public class PivApplet extends Applet
 		}
 
 		try {
-			ecdsaP256Sha = Signature.getInstance(
+			ecdsaSha = Signature.getInstance(
 			    Signature.ALG_ECDSA_SHA, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
 		try {
-			ecdsaP256Sha256 = Signature.getInstance(
+			ecdsaSha256 = Signature.getInstance(
 			    ECParams.ALG_ECDSA_SHA_256, useResetMem);
+		} catch (CryptoException ex) {
+			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
+				throw (ex);
+		}
+		try {
+			ecdsaSha384 = Signature.getInstance(
+			    ECParams.ALG_ECDSA_SHA_384, useResetMem);
 		} catch (CryptoException ex) {
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
@@ -683,11 +694,13 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_EC
 			case PIV_ALG_ECCP256:
+			case PIV_ALG_ECCP384:
 				ECPublicKey epubk =
 				    (ECPublicKey)slot.asym.getPublic();
+				final short eclen = (short)(epubk.getSize() / 4);
 
 				wtlv.push((byte)0x86);
-				wtlv.startReserve((short)65, tempBuf);
+				wtlv.startReserve((short)(eclen + 1), tempBuf);
 				len = epubk.getW(tempBuf.data(), tempBuf.wpos());
 				wtlv.endReserve(len);
 				wtlv.pop();
@@ -792,20 +805,36 @@ public class PivApplet extends Applet
 		wtlv.pop();
 //#endif
 //#if PIV_SUPPORT_EC
-		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
+		if (ecdsaSha != null || ecdsaSha256 != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256);
 			wtlv.pop();
 		}
+		if (ecdsaSha384 != null) {
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP384);
+			wtlv.pop();
+		}
 //#if !PIV_USE_EC_PRECOMPHASH
-		if (ecdsaP256Sha != null) {
+		if (ecdsaSha != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
 			wtlv.pop();
 		}
-		if (ecdsaP256Sha256 != null) {
+		if (ecdsaSha256 != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA256);
+			wtlv.pop();
+		}
+		if (ecdsaSha384 != null) {
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP384_SHA1);
+			wtlv.pop();
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP384_SHA256);
+			wtlv.pop();
+			wtlv.push((byte)0x80);
+			wtlv.writeByte(PIV_ALG_ECCP384_SHA384);
 			wtlv.pop();
 		}
 //#endif
@@ -1054,13 +1083,13 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
-			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
+			if (ecdsaSha == null && ecdsaSha256 == null) {
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
-			ECPrivateKey ecPriv;
-			ECPublicKey ecPub;
 			if (slot.asym == null || slot.asymAlg != alg) {
+				final ECPrivateKey ecPriv;
+				final ECPublicKey ecPub;
 				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
 				    KeyBuilder.TYPE_EC_FP_PRIVATE,
 				    (short)256, false);
@@ -1069,8 +1098,29 @@ public class PivApplet extends Applet
 				    (short)256, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParameters(ecPriv);
-				ECParams.setCurveParameters(ecPub);
+				ECParams.setCurveParametersP256(ecPriv);
+				ECParams.setCurveParametersP256(ecPub);
+			}
+			slot.asymAlg = alg;
+			break;
+		case PIV_ALG_ECCP384:
+			if (ecdsaSha == null && ecdsaSha256 == null) {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+			if (slot.asym == null || slot.asymAlg != alg) {
+				final ECPrivateKey ecPriv;
+				final ECPublicKey ecPub;
+				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PRIVATE,
+				    (short)384, false);
+				ecPub = (ECPublicKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PUBLIC,
+				    (short)384, false);
+				slot.asym = new KeyPair(
+				    (PublicKey)ecPub, (PrivateKey)ecPriv);
+				ECParams.setCurveParametersP384(ecPriv);
+				ECParams.setCurveParametersP384(ecPub);
 			}
 			slot.asymAlg = alg;
 			break;
@@ -1129,13 +1179,15 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
+		case PIV_ALG_ECCP384:
 			ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
+			final short eclen = (short)(epubk.getSize() / 4);
 
-			wtlv.push((short)0x7F49);
+			wtlv.push256((short)0x7F49);
 
 			wtlv.push((byte)0x86);
-			wtlv.startReserve((short)65, tempBuf);
+			wtlv.startReserve((short)(eclen + 1), tempBuf);
 			cLen = epubk.getW(tempBuf.data(), tempBuf.wpos());
 			wtlv.endReserve(cLen);
 			wtlv.pop();
@@ -1212,14 +1264,14 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
-			if (ecdsaP256Sha == null && ecdsaP256Sha256 == null) {
+			if (ecdsaSha == null && ecdsaSha256 == null) {
 				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
-			ECPrivateKey ecPriv;
-			ECPublicKey ecPub;
 			if (slot.asym == null || slot.asymAlg != alg) {
+				final ECPrivateKey ecPriv;
+				final ECPublicKey ecPub;
 				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
 				    KeyBuilder.TYPE_EC_FP_PRIVATE,
 				    (short)256, false);
@@ -1228,8 +1280,30 @@ public class PivApplet extends Applet
 				    (short)256, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParameters(ecPriv);
-				ECParams.setCurveParameters(ecPub);
+				ECParams.setCurveParametersP256(ecPriv);
+				ECParams.setCurveParametersP256(ecPub);
+			}
+			slot.asymAlg = alg;
+			break;
+		case PIV_ALG_ECCP384:
+			if (ecdsaSha == null && ecdsaSha256 == null) {
+				tlv.abort();
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+			if (slot.asym == null || slot.asymAlg != alg) {
+				final ECPrivateKey ecPriv;
+				final ECPublicKey ecPub;
+				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PRIVATE,
+				    (short)384, false);
+				ecPub = (ECPublicKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_EC_FP_PUBLIC,
+				    (short)384, false);
+				slot.asym = new KeyPair(
+				    (PublicKey)ecPub, (PrivateKey)ecPriv);
+				ECParams.setCurveParametersP384(ecPriv);
+				ECParams.setCurveParametersP384(ecPub);
 			}
 			slot.asymAlg = alg;
 			break;
@@ -1351,6 +1425,7 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
+		case PIV_ALG_ECCP384:
 			final ECPublicKey epubk =
 			    (ECPublicKey)slot.asym.getPublic();
 			final ECPrivateKey eprivk =
@@ -1572,6 +1647,7 @@ public class PivApplet extends Applet
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
 		case PIV_ALG_ECCP256:
+		case PIV_ALG_ECCP384:
 			if (slot.asymAlg != alg || slot.asym == null) {
 				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1589,6 +1665,17 @@ public class PivApplet extends Applet
 			}
 			len = (short)0;
 			break;
+		case PIV_ALG_ECCP384_SHA1:
+		case PIV_ALG_ECCP384_SHA256:
+		case PIV_ALG_ECCP384_SHA384:
+				if (slot.asymAlg != PIV_ALG_ECCP384 ||
+				    slot.asym == null) {
+					tlv.abort();
+					ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+					return;
+				}
+				len = (short)0;
+				break;
 		default:
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1769,9 +1856,11 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_EC
 				KeyAgreement ag;
 
-				if (alg == PIV_ALG_ECCP256_SHA1) {
+				if (alg == PIV_ALG_ECCP256_SHA1 ||
+				    alg == PIV_ALG_ECCP384_SHA1) {
 					ag = ecdhSha;
-				} else if (alg == PIV_ALG_ECCP256) {
+				} else if (alg == PIV_ALG_ECCP256 ||
+				    alg == PIV_ALG_ECCP384) {
 					ag = ecdh;
 				} else {
 					tlv.abort();
@@ -1786,7 +1875,11 @@ public class PivApplet extends Applet
 					return;
 				}
 
-				if (!bufmgr.alloc((short)65, outBuf)) {
+				final ECPublicKey pubK =
+				    (ECPublicKey)slot.asym.getPublic();
+				final short eclen = (short)(pubK.getSize() / 4);
+
+				if (!bufmgr.alloc((short)(eclen + 1), outBuf)) {
 					ISOException.throwIt(ISO7816.SW_FILE_FULL);
 					return;
 				}
@@ -1834,7 +1927,13 @@ public class PivApplet extends Applet
 			case PIV_ALG_ECCP256:
 			case PIV_ALG_ECCP256_SHA1:
 			case PIV_ALG_ECCP256_SHA256:
-				cLen = (short)256;
+				cLen = (short)75;
+				break;
+			case PIV_ALG_ECCP384:
+			case PIV_ALG_ECCP384_SHA1:
+			case PIV_ALG_ECCP384_SHA256:
+			case PIV_ALG_ECCP384_SHA384:
+				cLen = (short)107;
 				break;
 			}
 			if (!bufmgr.alloc(cLen, outBuf)) {
@@ -1869,11 +1968,14 @@ public class PivApplet extends Applet
 
 //#if PIV_USE_EC_PRECOMPHASH
 			} else if (slot.asymAlg == alg &&
-			    alg == PIV_ALG_ECCP256) {
+			    (alg == PIV_ALG_ECCP256 ||
+			    alg == PIV_ALG_ECCP384)) {
 				if (sLen == 20) {
-					si = ecdsaP256Sha;
+					si = ecdsaSha;
 				} else if (sLen == 32) {
-					si = ecdsaP256Sha256;
+					si = ecdsaSha256;
+				} else if (sLen == 48) {
+					si = ecdsaSha384;
 				} else {
 					tlv.abort();
 					ISOException.throwIt(
@@ -1890,14 +1992,46 @@ public class PivApplet extends Applet
 				    outBuf.data(), outBuf.wpos());
 				outBuf.write(cLen);
 //#endif
+			} else if (slot.asymAlg == PIV_ALG_ECCP384) {
+				switch (alg) {
+				case PIV_ALG_ECCP384_SHA384:
+					si = ecdsaSha384;
+					break;
+				case PIV_ALG_ECCP384_SHA256:
+					si = ecdsaSha256;
+					break;
+				case PIV_ALG_ECCP384_SHA1:
+					si = ecdsaSha;
+					break;
+				default:
+					tlv.abort();
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+
+				si.init(slot.asym.getPrivate(),
+				    Signature.MODE_SIGN);
+				short done = (short)0;
+				while (done < sLen) {
+					final short read =
+					    tlv.readPartial(tempBuf, sLen);
+					si.update(tempBuf.data(), tempBuf.rpos(),
+					    read);
+					done += read;
+				}
+				tlv.end();
+				cLen = si.sign(null, (short)0, (short)0,
+				    outBuf.data(), outBuf.wpos());
+				outBuf.write(cLen);
 
 			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
 				switch (alg) {
 				case PIV_ALG_ECCP256_SHA256:
-					si = ecdsaP256Sha256;
+					si = ecdsaSha256;
 					break;
 				case PIV_ALG_ECCP256_SHA1:
-					si = ecdsaP256Sha;
+					si = ecdsaSha;
 					break;
 				default:
 					tlv.abort();
@@ -2646,7 +2780,7 @@ public class PivApplet extends Applet
 		final PivSlot atslot = slots[SLOT_F9];
 
 //#if PIV_SUPPORT_EC
-		if (ecdsaP256Sha != null || ecdsaP256Sha256 != null) {
+		if (ecdsaSha != null || ecdsaSha256 != null) {
 			atslot.asymAlg = PIV_ALG_ECCP256;
 			final ECPrivateKey ecPriv;
 			final ECPublicKey ecPub;
@@ -2658,8 +2792,8 @@ public class PivApplet extends Applet
 			    (short)256, false);
 			atslot.asym = new KeyPair(
 			    (PublicKey)ecPub, (PrivateKey)ecPriv);
-			ECParams.setCurveParameters(ecPriv);
-			ECParams.setCurveParameters(ecPub);
+			ECParams.setCurveParametersP256(ecPriv);
+			ECParams.setCurveParametersP256(ecPub);
 		} else {
 			return;
 		}
@@ -2738,6 +2872,9 @@ public class PivApplet extends Applet
 	private static final byte[] OID_SECP256 = {
 	    (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0xCE, (byte)0x3D,
 	    (byte)0x03, (byte)0x01, (byte)0x07
+	};
+	private static final byte[] OID_SECP384 = {
+	    (byte)0x2B, (byte)0x81, (byte)0x04, (byte)0x00, (byte)0x22
 	};
 //#endif
 	private static final byte[] OID_YUBICOX = {
@@ -2819,10 +2956,21 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_EC
 		if (atslot.asymAlg == PIV_ALG_ECCP256) {
 			wtlv.push(ASN1_OID);
-			if (ecdsaP256Sha256 != null) {
+			if (ecdsaSha256 != null) {
 				wtlv.write(OID_ECDSA_SHA256, (short)0,
 				    (short)OID_ECDSA_SHA256.length);
-			} else if (ecdsaP256Sha != null) {
+			} else if (ecdsaSha != null) {
+				wtlv.write(OID_ECDSA_SHA, (short)0,
+				    (short)OID_ECDSA_SHA.length);
+			}
+			wtlv.pop();
+		}
+		if (atslot.asymAlg == PIV_ALG_ECCP384) {
+			wtlv.push(ASN1_OID);
+			if (ecdsaSha256 != null) {
+				wtlv.write(OID_ECDSA_SHA256, (short)0,
+				    (short)OID_ECDSA_SHA256.length);
+			} else if (ecdsaSha != null) {
 				wtlv.write(OID_ECDSA_SHA, (short)0,
 				    (short)OID_ECDSA_SHA.length);
 			}
@@ -2896,6 +3044,29 @@ public class PivApplet extends Applet
 			wtlv.push(ASN1_BITSTRING);
 			wtlv.writeByte((byte)0x00);	/* no borrowed bits */
 			wtlv.startReserve((short)33, tempBuf);
+			len = ecpub.getW(tempBuf.data(), tempBuf.wpos());
+			wtlv.endReserve(len);
+			wtlv.pop();
+		}
+		if (slot.asymAlg == PIV_ALG_ECCP384) {
+			final ECPublicKey ecpub =
+			    (ECPublicKey)slot.asym.getPublic();
+			wtlv.push(ASN1_SEQ);
+			/* Alg info */
+			wtlv.push(ASN1_SEQ);
+			wtlv.push(ASN1_OID);
+			wtlv.write(OID_ECPUBKEY, (short)0,
+			    (short)OID_ECPUBKEY.length);
+			wtlv.pop();
+			wtlv.push(ASN1_OID);
+			wtlv.write(OID_SECP384, (short)0,
+			    (short)OID_SECP384.length);
+			wtlv.pop();
+			wtlv.pop();
+			/* Key material */
+			wtlv.push(ASN1_BITSTRING);
+			wtlv.writeByte((byte)0x00);	/* no borrowed bits */
+			wtlv.startReserve((short)49, tempBuf);
 			len = ecpub.getW(tempBuf.data(), tempBuf.wpos());
 			wtlv.endReserve(len);
 			wtlv.pop();
@@ -2988,11 +3159,12 @@ public class PivApplet extends Applet
 				si = rsaSha256;
 			else
 				si = rsaSha;
-		} else if (atslot.asymAlg == PIV_ALG_ECCP256) {
-			if (ecdsaP256Sha256 != null)
-				si = ecdsaP256Sha256;
+		} else if (atslot.asymAlg == PIV_ALG_ECCP256 ||
+		    atslot.asymAlg == PIV_ALG_ECCP384) {
+			if (ecdsaSha256 != null)
+				si = ecdsaSha256;
 			else
-				si = ecdsaP256Sha;
+				si = ecdsaSha;
 		} else {
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
@@ -3048,12 +3220,13 @@ public class PivApplet extends Applet
 		}
 //#endif
 //#if PIV_SUPPORT_EC
-		if (atslot.asymAlg == PIV_ALG_ECCP256) {
+		if (atslot.asymAlg == PIV_ALG_ECCP256 ||
+		    atslot.asymAlg == PIV_ALG_ECCP384) {
 			wtlv.push(ASN1_OID);
-			if (ecdsaP256Sha256 != null) {
+			if (ecdsaSha256 != null) {
 				wtlv.write(OID_ECDSA_SHA256, (short)0,
 				    (short)OID_ECDSA_SHA256.length);
-			} else if (ecdsaP256Sha != null) {
+			} else if (ecdsaSha != null) {
 				wtlv.write(OID_ECDSA_SHA, (short)0,
 				    (short)OID_ECDSA_SHA.length);
 			}
