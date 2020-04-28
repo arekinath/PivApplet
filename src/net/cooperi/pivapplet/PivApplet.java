@@ -75,7 +75,7 @@ public class PivApplet extends Applet
 	};
 
 	private static final byte[] YKPIV_VERSION = {
-	    (byte)5, (byte)0, (byte)0
+	    (byte)5, (byte)3, (byte)0
 	};
 
 	/* Standard PIV commands we support. */
@@ -96,6 +96,7 @@ public class PivApplet extends Applet
 	private static final byte INS_SET_PIN_RETRIES = (byte)0xfa;
 	private static final byte INS_ATTEST = (byte)0xf9;
 	private static final byte INS_GET_SERIAL = (byte)0xf8;
+	private static final byte INS_GET_MDATA = (byte)0xf7;
 
 	/* Our own private extensions. */
 	private static final byte INS_SG_DEBUG = (byte)0xe0;
@@ -136,6 +137,10 @@ public class PivApplet extends Applet
 
 	private OwnerPIN pivPin = null;
 	private OwnerPIN pukPin = null;
+	private boolean pivPinIsDefault = true;
+	private boolean pukPinIsDefault = true;
+	private byte pinRetries;
+	private byte pukRetries;
 
 	private RandomData randData = null;
 	private Cipher tripleDes = null;
@@ -363,9 +368,11 @@ public class PivApplet extends Applet
 		 */
 		slots[SLOT_9B].pinPolicy = PivSlot.P_NEVER;
 
-		pivPin = new OwnerPIN((byte)5, (byte)8);
+		pinRetries = (byte)5;
+		pivPin = new OwnerPIN(pinRetries, (byte)8);
 		pivPin.update(DEFAULT_PIN, (short)0, (byte)8);
-		pukPin = new OwnerPIN((byte)3, (byte)8);
+		pukRetries = (byte)3;
+		pukPin = new OwnerPIN(pukRetries, (byte)8);
 		pukPin.update(DEFAULT_PUK, (short)0, (byte)8);
 
 		files[TAG_CERT_9A] = new File();
@@ -494,6 +501,9 @@ public class PivApplet extends Applet
 		case INS_GET_SERIAL:
 			processGetSerial(apdu);
 			break;
+		case INS_GET_MDATA:
+			processGetMetadata(apdu);
+			break;
 		default:
 			ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
 		}
@@ -562,6 +572,136 @@ public class PivApplet extends Applet
 		len = le > 0 ? (le > len ? len : le) : len;
 		apdu.setOutgoingLength(len);
 		apdu.sendBytes((short)0, len);
+	}
+
+	private void
+	processGetMetadata(APDU apdu)
+	{
+		final byte[] buffer = apdu.getBuffer();
+		final byte key = buffer[ISO7816.OFFSET_P2];
+		final PivSlot slot;
+
+		if (key == (byte)0x80 || key == (byte)0x81) {
+			outgoing.reset();
+			wtlv.start(outgoing);
+			outgoingLe = apdu.setOutgoing();
+			wtlv.useApdu((short)0, outgoingLe);
+
+			wtlv.push((byte)0x05);
+			if (key == (byte)0x80 && pivPinIsDefault)
+				wtlv.writeByte((byte)1);
+			else if (key == (byte)0x81 && pukPinIsDefault)
+				wtlv.writeByte((byte)1);
+			else
+				wtlv.writeByte((byte)0);
+			wtlv.pop();
+
+			wtlv.push((byte)0x06);
+			if (key == (byte)0x80)
+				wtlv.writeByte(pinRetries);
+			else if (key == (byte)0x81)
+				wtlv.writeByte(pukRetries);
+			wtlv.pop();
+
+			wtlv.end();
+			sendOutgoing(apdu);
+			return;
+		}
+
+		if (key >= (byte)0x9A && key <= (byte)0x9E) {
+			final byte idx = (byte)(key - (byte)0x9A);
+			slot = slots[idx];
+		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
+			final byte idx = (byte)(SLOT_MIN_HIST +
+			    (byte)(key - MIN_HIST_SLOT));
+			slot = slots[idx];
+		} else {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+		outgoingLe = apdu.setOutgoing();
+		wtlv.useApdu((short)0, outgoingLe);
+
+		if (slot.asym != null) {
+			wtlv.push((byte)0x01);
+			wtlv.writeByte(slot.asymAlg);
+			wtlv.pop();
+		} else if (slot.sym != null) {
+			wtlv.push((byte)0x01);
+			wtlv.writeByte(slot.symAlg);
+			wtlv.pop();
+		}
+
+		wtlv.push((byte)0x02);
+		wtlv.writeByte(slot.pinPolicy);
+		wtlv.writeByte((byte)0);
+		wtlv.pop();
+
+		wtlv.push((byte)0x03);
+		if (slot.imported)
+			wtlv.writeByte((byte)1);
+		else
+			wtlv.writeByte((byte)0);
+		wtlv.pop();
+
+		if (slot.asym != null) {
+			short len;
+
+			wtlv.push((byte)0x04);
+			switch (slot.asymAlg) {
+//#if PIV_SUPPORT_RSA
+			case PIV_ALG_RSA1024:
+			case PIV_ALG_RSA2048:
+				RSAPublicKey rpubk =
+				    (RSAPublicKey)slot.asym.getPublic();
+
+				wtlv.push64k((byte)0x81);
+				wtlv.startReserve((short)257, tempBuf);
+				len = rpubk.getModulus(tempBuf.data(), tempBuf.wpos());
+				wtlv.endReserve(len);
+				wtlv.pop();
+
+				wtlv.push((byte)0x82);
+				wtlv.startReserve((short)9, tempBuf);
+				len = rpubk.getExponent(tempBuf.data(), tempBuf.wpos());
+				wtlv.endReserve(len);
+				wtlv.pop();
+				break;
+//#endif
+//#if PIV_SUPPORT_EC
+			case PIV_ALG_ECCP256:
+				ECPublicKey epubk =
+				    (ECPublicKey)slot.asym.getPublic();
+
+				wtlv.push((byte)0x86);
+				wtlv.startReserve((short)65, tempBuf);
+				len = epubk.getW(tempBuf.data(), tempBuf.wpos());
+				wtlv.endReserve(len);
+				wtlv.pop();
+				break;
+//#endif
+			default:
+				return;
+			}
+			wtlv.pop();
+		}
+
+		wtlv.end();
+		sendOutgoing(apdu);
+		return;
 	}
 
 //#if YKPIV_ATTESTATION
@@ -1954,6 +2094,10 @@ public class PivApplet extends Applet
 			}
 		}
 		pin.update(buffer, newPinOff, (byte)8);
+		if (pin == pivPin)
+			pivPinIsDefault = false;
+		if (pin == pukPin)
+			pukPinIsDefault = false;
 	}
 
 	private void
@@ -2041,8 +2185,12 @@ public class PivApplet extends Applet
 
 		pivPin = new OwnerPIN(pinTries, (byte)8);
 		pivPin.update(DEFAULT_PIN, (short)0, (byte)8);
+		pivPinIsDefault = true;
+		pinRetries = pinTries;
 		pukPin = new OwnerPIN(pukTries, (byte)8);
 		pukPin.update(DEFAULT_PUK, (short)0, (byte)8);
+		pukPinIsDefault = true;
+		pukRetries = pukTries;
 	}
 
 	private void
@@ -2080,10 +2228,14 @@ public class PivApplet extends Applet
 		final DESKey dk = (DESKey)slots[SLOT_9B].sym;
 		dk.setKey(DEFAULT_ADMIN_KEY, (short)0);
 
-		pivPin = new OwnerPIN((byte)5, (byte)8);
+		pinRetries = (byte)5;
+		pivPin = new OwnerPIN(pinRetries, (byte)8);
 		pivPin.update(DEFAULT_PIN, (short)0, (byte)8);
-		pukPin = new OwnerPIN((byte)3, (byte)8);
+		pivPinIsDefault = true;
+		pukRetries = (byte)3;
+		pukPin = new OwnerPIN(pukRetries, (byte)8);
 		pukPin.update(DEFAULT_PUK, (short)0, (byte)8);
+		pukPinIsDefault = true;
 
 		randData.generateData(guid, (short)0, (short)16);
 

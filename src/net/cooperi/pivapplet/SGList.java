@@ -104,8 +104,10 @@ public class SGList implements Readable {
 	useApdu(final short offset, final short len)
 	{
 		final TransientBuffer buf = buffers[0];
-		buf.free();
-		buf.setApdu(offset, len);
+		if (len > 0) {
+			buf.free();
+			buf.setApdu(offset, len);
+		}
 	}
 
 	@Override
@@ -189,8 +191,10 @@ public class SGList implements Readable {
 	private short
 	takeForWrite(final short len)
 	{
-		if (state[WPTR_BUF] >= maxBufs)
+		if (state[WPTR_BUF] >= maxBufs) {
+			ISOException.throwIt(PivApplet.SW_RESERVE_FAILURE);
 			return ((short)0);
+		}
 		final TransientBuffer buf = buffers[state[WPTR_BUF]];
 		if (buf.data() == null) {
 			final short allocLen =
