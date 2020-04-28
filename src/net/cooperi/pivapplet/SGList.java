@@ -15,7 +15,11 @@ import javacard.framework.JCSystem;
 import javacard.framework.Util;
 
 public class SGList implements Readable {
+/*#if APPLET_LOW_TRANSIENT
+	public static final short DEFAULT_MAX_BUFS = 5;
+#else*/
 	public static final short DEFAULT_MAX_BUFS = 10;
+//#endif
 
 	/*
 	 * Minimum number of bytes we will ask our BufferManager for if

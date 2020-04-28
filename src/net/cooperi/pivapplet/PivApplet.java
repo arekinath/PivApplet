@@ -14,6 +14,7 @@ import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.JCSystem;
 import javacard.framework.OwnerPIN;
+import javacard.framework.SystemException;
 import javacard.framework.Util;
 import javacard.security.CryptoException;
 import javacard.security.DESKey;
@@ -205,6 +206,7 @@ public class PivApplet extends Applet
 
 	private static final byte ALG_EC_SVDP_DH_PLAIN = (byte)3;
 	private static final byte ALG_EC_SVDP_DHC_PLAIN = (byte)4;
+	private static final byte ALG_EC_SVDP_DH_PLAIN_XY = (byte)6;
 	private static final byte ALG_RSA_SHA_256_PKCS1 = (byte)40;
 
 	public static void
@@ -260,6 +262,17 @@ public class PivApplet extends Applet
 			try {
 				ecdh = KeyAgreement.getInstance(
 				    ALG_EC_SVDP_DHC_PLAIN, useResetMem);
+			} catch (CryptoException ex) {
+				if (ex.getReason() !=
+				    CryptoException.NO_SUCH_ALGORITHM)
+					throw (ex);
+			}
+		}
+
+		if (ecdh == null) {
+			try {
+				ecdh = KeyAgreement.getInstance(
+				    ALG_EC_SVDP_DH_PLAIN_XY, useResetMem);
 			} catch (CryptoException ex) {
 				if (ex.getReason() !=
 				    CryptoException.NO_SUCH_ALGORITHM)
@@ -927,7 +940,24 @@ public class PivApplet extends Applet
 			return;
 		}
 
-		slot.asym.genKeyPair();
+		try {
+			slot.asym.genKeyPair();
+		} catch (CryptoException ex) {
+			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+			return;
+		} catch (SystemException ex) {
+			switch (ex.getReason()) {
+			case SystemException.NO_TRANSIENT_SPACE:
+			case SystemException.NO_RESOURCE:
+				ISOException.throwIt(ISO7816.SW_FILE_FULL);
+				return;
+			default:
+				ISOException.throwIt((short)(
+				    (short)0x6f90 + ex.getReason()));
+				return;
+			}
+		}
+
 		slot.imported = false;
 
 		outgoing.reset();
@@ -1616,7 +1646,7 @@ public class PivApplet extends Applet
 					return;
 				}
 
-				if (!bufmgr.alloc((short)257, outBuf)) {
+				if (!bufmgr.alloc((short)65, outBuf)) {
 					ISOException.throwIt(ISO7816.SW_FILE_FULL);
 					return;
 				}

@@ -13,7 +13,11 @@ import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 
 public class TlvReader {
+/*#if APPLET_LOW_TRANSIENT
+	private static final short STACK_SIZE = (short)5;
+#else*/
 	private static final short STACK_SIZE = (short)8;
+//#endif
 
 	private static final byte OFFSET = 0;
 	private static final byte PTR = 1;

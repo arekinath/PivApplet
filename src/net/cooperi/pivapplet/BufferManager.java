@@ -35,7 +35,11 @@ import javacard.framework.JCSystem;
  * that ciphertext to put it into the tx payload).
  */
 public class BufferManager {
+/*#if APPLET_LOW_TRANSIENT
+	public static final byte MAX_BUFS = 6;
+#else*/
 	public static final byte MAX_BUFS = 10;
+//#endif
 
 	private final BaseBuffer[] buffers;
 	public boolean gcBlewUp = false;

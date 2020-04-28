@@ -19,12 +19,13 @@ public class BaseBuffer implements Buffer {
 	public static final short RAM_ALLOC_SIZE = 256;
 	public static final short RAM_ALLOC_SIZE_2 = 128;
 #endif*/
-	public static final short EEPROM_ALLOC_SIZE = 1024;
 
-/*#if APPLET_SIMULATOR
+/*#if APPLET_LOW_TRANSIENT
 	public static final short RAM_ALLOC_MAX_INDEX = 2;
+	public static final short EEPROM_ALLOC_SIZE = 2048;
 #else*/
 	public static final short RAM_ALLOC_MAX_INDEX = 7;
+	public static final short EEPROM_ALLOC_SIZE = 1024;
 //#endif
 
 	private static final short ST_RPOS = 0;

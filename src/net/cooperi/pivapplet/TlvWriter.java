@@ -11,7 +11,11 @@ package net.cooperi.pivapplet;
 import javacard.framework.JCSystem;
 
 public class TlvWriter {
+/*#if APPLET_LOW_TRANSIENT
+	private static final short STACK_SIZE = (short)5;
+#else*/
 	private static final short STACK_SIZE = (short)8;
+//#endif
 
 	private static final byte PTR = 0;
 

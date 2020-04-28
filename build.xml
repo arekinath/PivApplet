@@ -44,10 +44,12 @@
   -->
   <property name="APPLET_USE_RESET_MEM" value="false" />
   <!--
-    APPLET_SIMULATOR: tries to pretend we have memory limits like a real card
-    when running in the simulator. Useful for testing/debugging SGList code.
+    APPLET_LOW_TRANSIENT: conserve transient memory by falling back more
+    quickly to buffering long data in permanent memory and allowing fewer
+    memory segments in SGLists. This may break YKPIV_ATTESTATION. Recommended
+    on some cards which are short on transient memory.
   -->
-  <property name="APPLET_SIMULATOR" value="false" />
+  <property name="APPLET_LOW_TRANSIENT" value="false" />
 
   <target name="preprocess" description="proprocess java source">
     <taskdef resource="jpp.xml" classpath="ext/jpp-1.0.3.jar" />
