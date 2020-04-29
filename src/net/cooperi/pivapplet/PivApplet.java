@@ -815,7 +815,7 @@ public class PivApplet extends Applet
 			wtlv.writeByte(PIV_ALG_ECCP384);
 			wtlv.pop();
 		}
-//#if !PIV_USE_EC_PRECOMPHASH
+/*#if !PIV_USE_EC_PRECOMPHASH
 		if (ecdsaSha != null) {
 			wtlv.push((byte)0x80);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
@@ -837,7 +837,7 @@ public class PivApplet extends Applet
 			wtlv.writeByte(PIV_ALG_ECCP384_SHA384);
 			wtlv.pop();
 		}
-//#endif
+#endif*/
 //#endif
 		wtlv.push((byte)0x06);
 		wtlv.pop();
@@ -903,11 +903,11 @@ public class PivApplet extends Applet
 		    (byte)(buf[ISO7816.OFFSET_CLA] & (byte)0x10);
 
 		short recvLen = apdu.setIncomingAndReceive();
-/*#if APPLET_EXTLEN
+//#if APPLET_EXTLEN
 		final short cdata = apdu.getOffsetCdata();
-#else*/
+/*#else
 		final short cdata = ISO7816.OFFSET_CDATA;
-//#endif
+#endif*/
 
 		if (chainBit == 0 && incoming.atEnd()) {
 			if (recvLen != apdu.getIncomingLength()) {
@@ -983,9 +983,9 @@ public class PivApplet extends Applet
 
 //#if APPLET_EXTLEN
 		apduStream.reset(apdu.getOffsetCdata(), lc);
-//#else
+/*#else
 		apduStream.reset(ISO7816.OFFSET_CDATA, lc);
-//#endif
+#endif*/
 		tlv.start(apduStream);
 
 		if (tlv.readTag() != (byte)0xAC) {
@@ -1550,9 +1550,9 @@ public class PivApplet extends Applet
 
 //#if APPLET_EXTLEN
 		off = apdu.getOffsetCdata();
-//#else
+/*#else
 		off = ISO7816.OFFSET_CDATA;
-//#endif
+#endif*/
 		final byte alg = buffer[off++];
 		final byte key = buffer[off++];
 		final byte keyLen = buffer[off++];
@@ -2119,9 +2119,9 @@ public class PivApplet extends Applet
 		}
 //#if APPLET_EXTLEN
 		pinOff = apdu.getOffsetCdata();
-//#else
+/*#else
 		pinOff = ISO7816.OFFSET_CDATA;
-//#endif
+#endif*/
 
 		if (lc == 0 && pin.isValidated()) {
 			ISOException.throwIt(ISO7816.SW_NO_ERROR);
@@ -2196,9 +2196,9 @@ public class PivApplet extends Applet
 
 //#if APPLET_EXTLEN
 		oldPinOff = apdu.getOffsetCdata();
-//#else
+/*#else
 		oldPinOff = ISO7816.OFFSET_CDATA;
-//#endif
+#endif*/
 		if (lc != 16) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
@@ -2263,9 +2263,9 @@ public class PivApplet extends Applet
 
 //#if APPLET_EXTLEN
 		pukOff = apdu.getOffsetCdata();
-//#else
+/*#else
 		pukOff = ISO7816.OFFSET_CDATA;
-//#endif
+#endif*/
 		if (lc != 16) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
@@ -2521,9 +2521,9 @@ public class PivApplet extends Applet
 
 //#if APPLET_EXTLEN
 		apduStream.reset(apdu.getOffsetCdata(), lc);
-//#else
+/*#else
 		apduStream.reset(ISO7816.OFFSET_CDATA, lc);
-//#endif
+#endif*/
 		tlv.start(apduStream);
 
 		tag = tlv.readTag();
