@@ -314,6 +314,7 @@ public class PivApplet extends Applet
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
+//#if PIV_SUPPORT_ECCP384
 		try {
 			ecdsaSha384 = Signature.getInstance(
 			    ECParams.ALG_ECDSA_SHA_384, useResetMem);
@@ -321,6 +322,7 @@ public class PivApplet extends Applet
 			if (ex.getReason() != CryptoException.NO_SUCH_ALGORITHM)
 				throw (ex);
 		}
+//#endif
 //#endif
 
 		challenge = JCSystem.makeTransientByteArray((short)16,

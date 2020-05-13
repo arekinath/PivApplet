@@ -34,8 +34,12 @@ public class TransientBuffer implements Buffer {
 	public
 	TransientBuffer()
 	{
+/*#if APPLET_LOW_TRANSIENT
+		ptrs = new Object[PTR_BUF + 1];
+#else*/
 		ptrs = JCSystem.makeTransientObjectArray((short)(PTR_BUF + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
+//#endif
 		state = JCSystem.makeTransientShortArray((short)(ST_WPOS + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
 	}
@@ -50,6 +54,8 @@ public class TransientBuffer implements Buffer {
 	parent()
 	{
 		if (ptrs[PTR_PARENT] == null)
+			return (null);
+		if ((short)(state[ST_FLAGS] & FL_ALLOC) == 0)
 			return (null);
 		return ((BaseBuffer)ptrs[PTR_PARENT]);
 	}
@@ -164,8 +170,11 @@ public class TransientBuffer implements Buffer {
 	public byte[]
 	data()
 	{
-		if ((short)(state[ST_FLAGS] & FL_APDU) != 0)
+		final short flags = state[ST_FLAGS];
+		if ((short)(flags & FL_APDU) != 0)
 			return (APDU.getCurrentAPDUBuffer());
+		if (flags == 0)
+			return (null);
 		return ((byte[])ptrs[PTR_BUF]);
 	}
 

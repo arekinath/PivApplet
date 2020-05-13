@@ -36,7 +36,7 @@ import javacard.framework.JCSystem;
  */
 public class BufferManager {
 /*#if APPLET_LOW_TRANSIENT
-	public static final byte MAX_BUFS = 6;
+	public static final byte MAX_BUFS = 5;
 #else*/
 	public static final byte MAX_BUFS = 10;
 //#endif

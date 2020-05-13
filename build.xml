@@ -11,6 +11,13 @@
   <property name="PIV_SUPPORT_EC" value="true" />
 
   <!--
+    PIV_SUPPORT_ECCP384: specifically allows disabling P-384 EC support since
+    instantiating the 384-bit EC signer (even without ever using it) on some
+    cards brings the applet too close to exhausting transient memory.
+  -->
+  <property name="PIV_SUPPORT_ECCP384" value="true" />
+
+  <!--
     PIV_USE_EC_PRECOMPHASH: build with support for using signPreComputedHash()
     for EC signing. This can only work with JC3.0.5, but will build an applet
     that is capable of PIV standards-compliant EC signing.

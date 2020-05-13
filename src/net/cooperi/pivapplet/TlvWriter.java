@@ -13,7 +13,7 @@ import javacard.framework.Util;
 
 public class TlvWriter {
 /*#if APPLET_LOW_TRANSIENT
-	private static final short STACK_SIZE = (short)5;
+	private static final short STACK_SIZE = (short)4;
 #else*/
 	private static final short STACK_SIZE = (short)8;
 //#endif
@@ -32,16 +32,21 @@ public class TlvWriter {
 	public
 	TlvWriter(BufferManager bufmgr)
 	{
-		target = JCSystem.makeTransientObjectArray((short)1,
-		    JCSystem.CLEAR_ON_DESELECT);
 		stackBuf = JCSystem.makeTransientShortArray(STACK_SIZE,
 		    JCSystem.CLEAR_ON_DESELECT);
 		stackOff = JCSystem.makeTransientShortArray(STACK_SIZE,
 		    JCSystem.CLEAR_ON_DESELECT);
 		stackWPtr = JCSystem.makeTransientShortArray(STACK_SIZE,
 		    JCSystem.CLEAR_ON_DESELECT);
+/*#if APPLET_LOW_TRANSIENT
+		tmp = new byte[5];
+		target = new Object[1];
+#else*/
 		tmp = JCSystem.makeTransientByteArray((short)5,
 		    JCSystem.CLEAR_ON_DESELECT);
+		target = JCSystem.makeTransientObjectArray((short)1,
+		    JCSystem.CLEAR_ON_DESELECT);
+//#endif
 		s = JCSystem.makeTransientShortArray((short)(PTR + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
 		this.scratch = new SGList(bufmgr, (short)4);

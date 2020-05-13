@@ -14,7 +14,7 @@ import javacard.framework.ISOException;
 
 public class TlvReader {
 /*#if APPLET_LOW_TRANSIENT
-	private static final short STACK_SIZE = (short)5;
+	private static final short STACK_SIZE = (short)4;
 #else*/
 	private static final short STACK_SIZE = (short)8;
 //#endif
