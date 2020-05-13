@@ -17,8 +17,8 @@ What works:
 
  * OpenSC, MacOS (`piv.tokend` for login), Windows PIV
  * RSA-1024 and -2048 key generation on card, signing
- * EC P-256 key generation
- * EC Diffie-Hellman on P-256
+ * EC P-256 and P-384 key generation
+ * EC Diffie-Hellman on P-256 and P-384
  * ECDSA (only when using JavaCard 3.0.4+ builds)
     - JC 2.2.2 builds have a hash-on-card workaround (see below), but this is
       not standard PIV
@@ -33,6 +33,7 @@ What works:
     - Reset after PIN+PUK blocked
     - Change PIN/PUK retry limits
     - Attestation using slot F9
+    - Get metadata (5.3.0)
 
 What doesn't work:
 
@@ -163,20 +164,38 @@ $ ant
 The capfile will be output in the `./bin` directory, along with the `.class`
 files (which can be used with jCardSim).
 
+You can also download pre-built capfiles from the
+[releases page](https://github.com/arekinath/PivApplet/releases) here on GitHub.
+
 The applet can be configured to suit different cards or needs by adjusting
 the feature flags in `build.xml` before running `ant`.
 
 Currently available feature flags:
 
 |===
-|`PIV_SUPPORT_RSA`        | Enable RSA support
-|`PIV_SUPPORT_EC`         | Enable ECDSA and ECDH support
-|`PIV_USE_EC_PRECOMPHASH` | Use JC3.0.4+ API to allow standardised PIV ECDSA (rather than the hash-on-card extension, which will be disabled)
-|`PIV_STRICT_CONTACTLESS` | Block most slots and keys from use over contactless (strictly conform to the PIV spec)
-|`YKPIV_ATTESTATION`      | Enable YubicoPIV-style attestation slot and command
-|`APPLET_USE_RESET_MEM`   | Use `CLEAR_ON_RESET` memory for Cipher and Signature intermediate data. This is needed for cards with low amounts of transient `CLEAR_ON_DESELECT` memory (e.g. J3H145, JC30M48CR)
-|`APPLET_EXTLEN`          | Support for extended APDUs. Some cards have bugs that make this feature malfunction (e.g. ACOSJ)
+|`PIV_SUPPORT_RSA`        | `R` | Enable RSA support
+|`PIV_SUPPORT_EC`         | `E` | Enable ECDSA and ECDH support
+|`PIV_SUPPORT_ECCP384`    | `e` | Enable P-384 support with ECDSA/ECDH
+|`PIV_USE_EC_PRECOMPHASH` | `P` | Use JC3.0.4+ API to allow standardised PIV ECDSA (rather than the hash-on-card extension, which will be disabled)
+|`PIV_STRICT_CONTACTLESS` | `S` | Block most slots and keys from use over contactless (strictly conform to the PIV spec)
+|`YKPIV_ATTESTATION`      | `A` | Enable YubicoPIV-style attestation slot and command
+|`APPLET_EXTLEN`          | `x` | Support for extended APDUs. Some cards have bugs that make this feature malfunction (e.g. ACOSJ)
+|`APPLET_LOW_TRANSIENT`   | `L` | Reduce required transient memory for the applet by shrinking buffers. Reduces maximum certificate size and may impact performance. Cannot be used with `YKPIV_ATTESTATION`.
 |===
+
+Tested card configurations:
+
+|===
+|NXP J3H145        | JC3.0.4      | `REePSAx`
+|NXP J3D081        | JC2.2.2      | `RESAx`
+|NXP J2A040        | JC2.2.2      | `RESAx`
+|JC30M48CR         | JC3.0.4      | `ESPxL`, `RSxL`
+|ACOSJ 40k D1      | JC3.0.4      | `REePSA`
+|G&D StarSign CUT  | JC3.0.4      | `REePSAx`
+|===
+
+As of v0.8.0, the builds on the releases page are labelled with these same
+abbreviations.
 
 ## Simulation
 
