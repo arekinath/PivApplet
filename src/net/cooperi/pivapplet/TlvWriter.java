@@ -234,7 +234,7 @@ public class TlvWriter {
 	write(byte[] data, short off, short len)
 	{
 		/* For short strings, just write directly into scratch. */
-		if (len <= 32) {
+		if (len <= 128) {
 			scratch.write(data, off, len);
 			return;
 		}
