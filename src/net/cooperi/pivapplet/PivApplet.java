@@ -46,6 +46,41 @@ public class PivApplet extends Applet
 	};
 
 	private static final byte[] APP_NAME = {
+	    'P', 'i', 'v', 'A', 'p', 'p', 'l', 'e', 't', ' ',
+	    'v', '0', '.', '8', '.', '0', '/',
+//#if PIV_SUPPORT_RSA
+	    'R',
+//#endif
+//#if PIV_SUPPORT_EC
+	    'E',
+//#endif
+//#if PIV_SUPPORT_ECCP384
+	    'e',
+//#endif
+//#if PIV_USE_EC_PRECOMPHASH
+	    'P',
+//#endif
+//#if PIV_STRICT_CONTACTLESS
+	    'S',
+//#endif
+//#if YKPIV_ATTESTATION
+	    'A',
+//#endif
+//#if APPLET_EXTLEN
+	    'x',
+//#endif
+//#if APPLET_LOW_TRANSIENT
+	    'L',
+//#endif
+//#if APPLET_USE_RESET_MEM
+	    'r',
+//#endif
+	};
+
+	private static final byte[] APP_URI = {
+	    'h', 't', 't', 'p', 's', ':', '/', '/',
+	    'g', 'i', 't', 'h', 'u', 'b', '.', 'c', 'o', 'm', '/',
+	    'a', 'r', 'e', 'k', 'i', 'n', 'a', 't', 'h', '/',
 	    'P', 'i', 'v', 'A', 'p', 'p', 'l', 'e', 't'
 	};
 
@@ -781,69 +816,62 @@ public class PivApplet extends Applet
 
 		wtlv.push((byte)0x61);
 
-		wtlv.push((byte)0x4F);
+		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
 		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-		wtlv.pop();
 
 		wtlv.push((byte)0x79);
-		wtlv.push((byte)0x4F);
+		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
 		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
 		wtlv.pop();
-		wtlv.pop();
 
-		wtlv.push((byte)0x50);
+		wtlv.writeTagRealLen((byte)0x50, (short)APP_NAME.length);
 		wtlv.write(APP_NAME, (short)0, (short)APP_NAME.length);
-		wtlv.pop();
+
+		wtlv.writeTagRealLen((short)0x5F50, (short)APP_URI.length);
+		wtlv.write(APP_URI, (short)0, (short)APP_URI.length);
 
 		wtlv.push((byte)0xAC);
-		wtlv.push((byte)0x80);
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
 		wtlv.writeByte(PIV_ALG_3DES);
-		wtlv.pop();
 //#if PIV_SUPPORT_RSA
-		wtlv.push((byte)0x80);
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
 		wtlv.writeByte(PIV_ALG_RSA1024);
-		wtlv.pop();
-		wtlv.push((byte)0x80);
+
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
 		wtlv.writeByte(PIV_ALG_RSA2048);
-		wtlv.pop();
 //#endif
 //#if PIV_SUPPORT_EC
 		if (ecdsaSha != null || ecdsaSha256 != null) {
-			wtlv.push((byte)0x80);
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP256);
-			wtlv.pop();
 		}
 		if (ecdsaSha384 != null) {
-			wtlv.push((byte)0x80);
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP384);
-			wtlv.pop();
 		}
 /*#if !PIV_USE_EC_PRECOMPHASH
 		if (ecdsaSha != null) {
-			wtlv.push((byte)0x80);
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
-			wtlv.pop();
 		}
 		if (ecdsaSha256 != null) {
-			wtlv.push((byte)0x80);
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP256_SHA256);
-			wtlv.pop();
 		}
 		if (ecdsaSha384 != null) {
-			wtlv.push((byte)0x80);
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP384_SHA1);
-			wtlv.pop();
-			wtlv.push((byte)0x80);
+
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP384_SHA256);
-			wtlv.pop();
-			wtlv.push((byte)0x80);
+
+			wtlv.writeTagRealLen((byte)0x80, (short)1);
 			wtlv.writeByte(PIV_ALG_ECCP384_SHA384);
-			wtlv.pop();
 		}
 #endif*/
 //#endif
-		wtlv.push((byte)0x06);
-		wtlv.pop();
+		wtlv.writeTagRealLen((byte)0x06, (short)0);
+
 		wtlv.pop();
 
 		wtlv.pop();
