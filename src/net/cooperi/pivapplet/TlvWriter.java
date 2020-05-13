@@ -113,6 +113,18 @@ public class TlvWriter {
 	}
 
 	public void
+	push(short tag, short expLen)
+	{
+		if (expLen > (short)250) {
+			push64k(tag);
+		} else if (expLen > (short)124) {
+			push256(tag);
+		} else {
+			push(tag);
+		}
+	}
+
+	public void
 	push256(byte tag)
 	{
 		scratch.writeByte(tag);
