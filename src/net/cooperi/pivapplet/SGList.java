@@ -208,7 +208,7 @@ public class SGList implements Readable {
 			return ((short)0);
 		}
 		final TransientBuffer buf = buffers[state[WPTR_BUF]];
-		if (buf.data() == null) {
+		if (!buf.isAllocated()) {
 			final short allocLen =
 			    (len < MIN_ALLOC_LEN) ? MIN_ALLOC_LEN : len;
 			mgr.alloc(allocLen, buf);

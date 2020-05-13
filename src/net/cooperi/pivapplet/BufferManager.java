@@ -89,7 +89,7 @@ public class BufferManager {
 		 * If we already allocated this buffer and can re-use it, just
 		 * do that.
 		 */
-		if (buf.data() != null) {
+		if (buf.isAllocated()) {
 			final short curLen = buf.len();
 			if (curLen < size)
 				buf.expand((short)(size - curLen));
@@ -104,6 +104,9 @@ public class BufferManager {
 		for (short idx = 0; idx < MAX_BUFS; ++idx) {
 			final BaseBuffer buffer = buffers[idx];
 
+			if (buffer.maskFull())
+				continue;
+
 			/*
 			 * We've never used this buffer before? Try to allocate
 			 * some space to it.
@@ -113,9 +116,6 @@ public class BufferManager {
 
 			final byte[] data = buffer.data();
 			if (data == null)
-				continue;
-
-			if (buffer.maskFull())
 				continue;
 
 			final short bufSize = (short)data.length;

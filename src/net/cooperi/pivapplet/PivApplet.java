@@ -1570,170 +1570,27 @@ public class PivApplet extends Applet
 	}
 
 	private void
-	processGeneralAuth(APDU apdu)
+	processGenAuthSym(final APDU apdu, final PivSlot slot,
+	    byte alg, final byte key, final Readable input,
+	    byte wanted, byte tag)
 	{
-		final byte[] buffer = apdu.getBuffer();
-		final byte key;
-		byte alg, tag, wanted = 0;
-		short lc, le, len, cLen;
-		final PivSlot slot;
-		final Cipher ci;
-		final Signature si;
-		final Readable input;
+		final Cipher ci = tripleDes;
+		final short len;
+		short cLen;
 
-		alg = buffer[ISO7816.OFFSET_P1];
-		key = buffer[ISO7816.OFFSET_P2];
-
-		if (key >= (byte)0x9A && key <= (byte)0x9E) {
-			final byte idx = (byte)(key - (byte)0x9A);
-			slot = slots[idx];
-		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
-			final byte idx = (byte)(SLOT_MIN_HIST +
-			    (byte)(key - MIN_HIST_SLOT));
-			slot = slots[idx];
-		} else {
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
-
-		if (slot == null) {
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
-
-		if (slot.pinPolicy != PivSlot.P_NEVER &&
-		    !slot.flags[PivSlot.F_UNLOCKED]) {
-			ISOException.throwIt(
-			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
-			return;
-		}
-
-		if (!isContact() && slot.cert != null &&
-		    slot.cert.contactless == File.P_NEVER) {
-			ISOException.throwIt(
-			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
-			return;
-		}
-
-		input = receiveChain(apdu);
-		if (input == null)
-			return;
-
-		tlv.start(input);
-
-		if (tlv.readTag() != (byte)0x7C) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
-		}
-
-		switch (alg) {
-		case PIV_ALG_DEFAULT:
-		case PIV_ALG_3DES:
+		if (alg == PIV_ALG_DEFAULT)
 			alg = PIV_ALG_3DES;
-			if (slot.symAlg != alg || slot.sym == null) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-			len = (short)8;
-			break;
-		case PIV_ALG_AES128:
-			if (slot.symAlg != alg || slot.sym == null) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-			len = (short)16;
-			break;
-		case PIV_ALG_RSA1024:
-		case PIV_ALG_RSA2048:
-		case PIV_ALG_ECCP256:
-		case PIV_ALG_ECCP384:
-			if (slot.asymAlg != alg || slot.asym == null) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-			len = (short)0;
-			break;
-		case PIV_ALG_ECCP256_SHA1:
-		case PIV_ALG_ECCP256_SHA256:
-			if (slot.asymAlg != PIV_ALG_ECCP256 ||
-			    slot.asym == null) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-			len = (short)0;
-			break;
-		case PIV_ALG_ECCP384_SHA1:
-		case PIV_ALG_ECCP384_SHA256:
-		case PIV_ALG_ECCP384_SHA384:
-				if (slot.asymAlg != PIV_ALG_ECCP384 ||
-				    slot.asym == null) {
-					tlv.abort();
-					ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-					return;
-				}
-				len = (short)0;
-				break;
-		default:
+		if (slot.symAlg != alg || slot.sym == null) {
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
-
-		switch (alg) {
-		case PIV_ALG_3DES:
-			ci = tripleDes;
-			break;
-		case PIV_ALG_RSA1024:
-		case PIV_ALG_RSA2048:
-			ci = rsaPkcs1;
-			if (ci == null) {
-				tlv.abort();
-				ISOException.throwIt(
-				    ISO7816.SW_FUNC_NOT_SUPPORTED);
-				return;
-			}
-			break;
-		default:
-			ci = null;
-			break;
-		}
-
-		/*
-		 * First, scan through the TLVs to figure out what the host
-		 * actually wants from us.
-		 */
-		while (!tlv.atEnd()) {
-			tag = tlv.readTag();
-			if (tlv.tagLength() == 0) {
-				wanted = tag;
-				break;
-			}
-			tlv.skip();
-		}
-
-		/* Now rewind, let's figure out what to do */
-		tlv.rewind();
-		tlv.readTag(); /* The 0x7C outer tag */
-
-		tag = tlv.readTag();
-		if (tag == wanted) {
-			tlv.skip();
-			if (!tlv.atEnd())
-				tag = tlv.readTag();
-		}
+		if (alg == PIV_ALG_AES128)
+			len = (short)16;
+		else
+			len = (short)8;
 
 		if (wanted == (byte)0) {
-			if (key != (byte)0x9b) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-
 			byte comp = -1;
 			if (tag == GA_TAG_RESPONSE) {
 				ci.init(slot.sym, Cipher.MODE_DECRYPT, iv,
@@ -1741,7 +1598,7 @@ public class PivApplet extends Applet
 				tlv.read(tempBuf, len);
 				if (!bufmgr.alloc(len, outBuf)) {
 					ISOException.throwIt(
-					    ISO7816.SW_FILE_FULL);
+						ISO7816.SW_FILE_FULL);
 					return;
 				}
 				cLen = ci.doFinal(tempBuf.data(), tempBuf.rpos(),
@@ -1791,11 +1648,6 @@ public class PivApplet extends Applet
 
 		switch (wanted) {
 		case GA_TAG_CHALLENGE:
-			if (key != (byte)0x9b) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
 			/*
 			 * The host is asking us for a challenge value
 			 * for them to encrypt and return in a RESPONSE
@@ -1822,12 +1674,6 @@ public class PivApplet extends Applet
 			break;
 
 		case GA_TAG_WITNESS:
-			if (key != (byte)0x9b) {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-				return;
-			}
-
 			outgoing.reset();
 			wtlv.start(outgoing);
 			outgoingLe = apdu.setOutgoing();
@@ -1854,218 +1700,25 @@ public class PivApplet extends Applet
 			break;
 
 		case GA_TAG_RESPONSE:
-			if (tag == GA_TAG_EXP) {
-//#if PIV_SUPPORT_EC
-				KeyAgreement ag;
-
-				if (alg == PIV_ALG_ECCP256_SHA1 ||
-				    alg == PIV_ALG_ECCP384_SHA1) {
-					ag = ecdhSha;
-				} else if (alg == PIV_ALG_ECCP256 ||
-				    alg == PIV_ALG_ECCP384) {
-					ag = ecdh;
-				} else {
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
-					return;
-				}
-				if (ag == null) {
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_FUNC_NOT_SUPPORTED);
-					return;
-				}
-
-				final ECPublicKey pubK =
-				    (ECPublicKey)slot.asym.getPublic();
-				final short eclen = (short)(pubK.getSize() / 4);
-
-				if (!bufmgr.alloc((short)(eclen + 1), outBuf)) {
-					ISOException.throwIt(ISO7816.SW_FILE_FULL);
-					return;
-				}
-
-				cLen = tlv.read(tempBuf, tlv.tagLength());
-				tlv.end();
-
-				ag.init(slot.asym.getPrivate());
-				cLen = ag.generateSecret(tempBuf.data(),
-				    tempBuf.rpos(), cLen,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-
-				incoming.reset();
-				outgoing.reset();
-				wtlv.start(outgoing);
-				outgoingLe = apdu.setOutgoing();
-				wtlv.useApdu((short)0, outgoingLe);
-
-				wtlv.push((byte)0x7C, (short)(cLen + 4));
-				wtlv.push(GA_TAG_RESPONSE, cLen);
-				wtlv.write(outBuf);
-				wtlv.pop();
-
-				wtlv.pop();
-				wtlv.end();
-				sendOutgoing(apdu);
-				break;
-//#endif
-			}
 			if (tag != GA_TAG_CHALLENGE) {
 				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
 			final short sLen = tlv.tagLength();
-			cLen = sLen;
-			switch (alg) {
-			case PIV_ALG_RSA1024:
-				cLen = (short)128;
-				break;
-			case PIV_ALG_RSA2048:
-				cLen = (short)256;
-				break;
-			case PIV_ALG_ECCP256:
-			case PIV_ALG_ECCP256_SHA1:
-			case PIV_ALG_ECCP256_SHA256:
-				cLen = (short)75;
-				break;
-			case PIV_ALG_ECCP384:
-			case PIV_ALG_ECCP384_SHA1:
-			case PIV_ALG_ECCP384_SHA256:
-			case PIV_ALG_ECCP384_SHA384:
-				cLen = (short)107;
-				break;
-			}
-			if (!bufmgr.alloc(cLen, outBuf)) {
+			tlv.read(tempBuf, sLen);
+			tlv.end();
+
+			if (!bufmgr.alloc(sLen, outBuf)) {
 				ISOException.throwIt(ISO7816.SW_FILE_FULL);
 				return;
 			}
-
-			if (slot.symAlg == alg) {
-				tlv.read(tempBuf, sLen);
-				tlv.end();
-				ci.init(slot.sym, Cipher.MODE_ENCRYPT,
-				    iv, (short)0, len);
-				cLen = ci.doFinal(tempBuf.data(),
-				    tempBuf.rpos(), sLen,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-
-//#if PIV_SUPPORT_RSA
-			} else if (slot.asymAlg == alg && (
-			    alg == PIV_ALG_RSA1024 || alg == PIV_ALG_RSA2048)) {
-				tlv.read(tempBuf, sLen);
-				tlv.end();
-				ci.init(slot.asym.getPrivate(),
-				    Cipher.MODE_ENCRYPT);
-				cLen = ci.doFinal(tempBuf.data(),
-				    tempBuf.rpos(), sLen,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-//#endif
-
-//#if PIV_SUPPORT_EC
-
-//#if PIV_USE_EC_PRECOMPHASH
-			} else if (slot.asymAlg == alg &&
-			    (alg == PIV_ALG_ECCP256 ||
-			    alg == PIV_ALG_ECCP384)) {
-				if (sLen == 20) {
-					si = ecdsaSha;
-				} else if (sLen == 32) {
-					si = ecdsaSha256;
-				} else if (sLen == 48) {
-					si = ecdsaSha384;
-				} else {
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
-					return;
-				}
-				tlv.read(tempBuf, sLen);
-				tlv.end();
-
-				si.init(slot.asym.getPrivate(),
-				    Signature.MODE_SIGN);
-				cLen = si.signPreComputedHash(tempBuf.data(),
-				    tempBuf.rpos(), sLen,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-//#endif
-			} else if (slot.asymAlg == PIV_ALG_ECCP384) {
-				switch (alg) {
-				case PIV_ALG_ECCP384_SHA384:
-					si = ecdsaSha384;
-					break;
-				case PIV_ALG_ECCP384_SHA256:
-					si = ecdsaSha256;
-					break;
-				case PIV_ALG_ECCP384_SHA1:
-					si = ecdsaSha;
-					break;
-				default:
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
-					return;
-				}
-
-				si.init(slot.asym.getPrivate(),
-				    Signature.MODE_SIGN);
-				short done = (short)0;
-				while (done < sLen) {
-					final short read =
-					    tlv.readPartial(tempBuf, sLen);
-					si.update(tempBuf.data(), tempBuf.rpos(),
-					    read);
-					done += read;
-				}
-				tlv.end();
-				cLen = si.sign(null, (short)0, (short)0,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-
-				incoming.resetAndFree();
-
-			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
-				switch (alg) {
-				case PIV_ALG_ECCP256_SHA256:
-					si = ecdsaSha256;
-					break;
-				case PIV_ALG_ECCP256_SHA1:
-					si = ecdsaSha;
-					break;
-				default:
-					tlv.abort();
-					ISOException.throwIt(
-					    ISO7816.SW_WRONG_DATA);
-					return;
-				}
-
-				si.init(slot.asym.getPrivate(),
-				    Signature.MODE_SIGN);
-				short done = (short)0;
-				while (done < sLen) {
-					final short read =
-					    tlv.readPartial(tempBuf, sLen);
-					si.update(tempBuf.data(), tempBuf.rpos(),
-					    read);
-					done += read;
-				}
-				tlv.end();
-				cLen = si.sign(null, (short)0, (short)0,
-				    outBuf.data(), outBuf.wpos());
-				outBuf.write(cLen);
-
-				incoming.resetAndFree();
-//#endif
-			} else {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-				return;
-			}
+			ci.init(slot.sym, Cipher.MODE_ENCRYPT,
+			    iv, (short)0, len);
+			cLen = ci.doFinal(tempBuf.data(),
+			    tempBuf.rpos(), sLen,
+			    outBuf.data(), outBuf.wpos());
+			outBuf.write(cLen);
 
 			outgoing.reset();
 			wtlv.start(outgoing);
@@ -2086,9 +1739,448 @@ public class PivApplet extends Applet
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
+	}
 
+//#if PIV_SUPPORT_RSA
+	private void
+	processGenAuthRsa(final APDU apdu, final PivSlot slot,
+	    byte alg, final byte key, final Readable input,
+	    final byte wanted, final byte tag)
+	{
+		final Cipher ci = rsaPkcs1;
+		short cLen;
+		if (slot.asymAlg != alg || slot.asym == null) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+		if (ci == null) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+			return;
+		}
+		if (wanted != GA_TAG_RESPONSE || tag != GA_TAG_CHALLENGE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+		final short sLen = tlv.tagLength();
+		cLen = sLen;
+		switch (alg) {
+		case PIV_ALG_RSA1024:
+			cLen = (short)128;
+			break;
+		case PIV_ALG_RSA2048:
+			cLen = (short)256;
+			break;
+		}
+		if (!bufmgr.alloc(cLen, outBuf)) {
+			ISOException.throwIt(ISO7816.SW_FILE_FULL);
+			return;
+		}
+		tlv.read(tempBuf, sLen);
 		tlv.end();
-		tlv.finish();
+		ci.init(slot.asym.getPrivate(), Cipher.MODE_ENCRYPT);
+		cLen = ci.doFinal(tempBuf.data(), tempBuf.rpos(), sLen,
+		    outBuf.data(), outBuf.wpos());
+		outBuf.write(cLen);
+
+		incoming.resetAndFree();
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+		outgoingLe = apdu.setOutgoing();
+		wtlv.useApdu((short)0, outgoingLe);
+
+		wtlv.writeTagRealLen((byte)0x7c,
+		    TlvWriter.sizeWithByteTag(cLen));
+		wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
+		wtlv.write(outBuf);
+
+		wtlv.end();
+		sendOutgoing(apdu);
+	}
+//#endif
+
+//#if PIV_SUPPORT_EC
+	private void
+	processGenAuthEcPlain(final APDU apdu, final PivSlot slot,
+	    byte alg, final byte key, final Readable input,
+	    final byte wanted, final byte tag)
+	{
+		short cLen;
+
+		if (slot.asymAlg != alg || slot.asym == null) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (wanted != GA_TAG_RESPONSE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+//#if PIV_USE_EC_PRECOMPHASH
+		/* Are they asking for ECDH? */
+		if (tag == GA_TAG_EXP) {
+			final KeyAgreement ag = ecdh;
+			if (ag == null) {
+				tlv.abort();
+				ISOException.throwIt(
+				    ISO7816.SW_FUNC_NOT_SUPPORTED);
+				return;
+			}
+			processGenAuthEcdh(apdu, slot, ag);
+			return;
+		}
+
+		/* Otherwise they must be asking for a signature. */
+		if (tag != GA_TAG_CHALLENGE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		final short sLen = tlv.tagLength();
+		cLen = sLen;
+		switch (alg) {
+		case PIV_ALG_ECCP256:
+			cLen = (short)75;
+			break;
+		case PIV_ALG_ECCP384:
+			cLen = (short)107;
+			break;
+		}
+
+		final Signature si;
+		switch (sLen) {
+		case 20:
+			si = ecdsaSha;
+			break;
+		case 32:
+			si = ecdsaSha256;
+			break;
+		case 48:
+			si = ecdsaSha384;
+			break;
+		default:
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		tlv.read(tempBuf, sLen);
+		tlv.end();
+
+		if (!bufmgr.alloc(cLen, outBuf)) {
+			ISOException.throwIt(ISO7816.SW_FILE_FULL);
+			return;
+		}
+
+		si.init(slot.asym.getPrivate(), Signature.MODE_SIGN);
+		cLen = si.signPreComputedHash(tempBuf.data(),
+		    tempBuf.rpos(), sLen,
+		    outBuf.data(), outBuf.wpos());
+		outBuf.write(cLen);
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+		outgoingLe = apdu.setOutgoing();
+		wtlv.useApdu((short)0, outgoingLe);
+
+		wtlv.writeTagRealLen((byte)0x7c,
+		    TlvWriter.sizeWithByteTag(cLen));
+		wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
+		wtlv.write(outBuf);
+
+		wtlv.end();
+		sendOutgoing(apdu);
+
+/*#else
+		tlv.abort();
+		ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+		return;
+#endif*/
+	}
+
+	private void
+	processGenAuthEcdh(final APDU apdu, final PivSlot slot,
+	    final KeyAgreement ag)
+	{
+		final ECPublicKey pubK =
+		    (ECPublicKey)slot.asym.getPublic();
+		final short eclen = (short)(pubK.getSize() / 4);
+		short cLen;
+
+		if (!bufmgr.alloc((short)(eclen + 1), outBuf)) {
+			ISOException.throwIt(ISO7816.SW_FILE_FULL);
+			return;
+		}
+
+		cLen = tlv.read(tempBuf, tlv.tagLength());
+		tlv.end();
+
+		ag.init(slot.asym.getPrivate());
+		cLen = ag.generateSecret(tempBuf.data(), tempBuf.rpos(), cLen,
+		    outBuf.data(), outBuf.wpos());
+		outBuf.write(cLen);
+
+		incoming.reset();
+		outgoing.reset();
+		wtlv.start(outgoing);
+		outgoingLe = apdu.setOutgoing();
+		wtlv.useApdu((short)0, outgoingLe);
+
+		wtlv.writeTagRealLen((byte)0x7c,
+		    TlvWriter.sizeWithByteTag(cLen));
+		wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
+		wtlv.write(outBuf);
+
+		wtlv.end();
+		sendOutgoing(apdu);
+	}
+
+	private void
+	processGenAuthEcHash(final APDU apdu, final PivSlot slot,
+	    byte alg, final byte key, final Readable input,
+	    final byte wanted, final byte tag)
+	{
+		final byte baseAlg;
+		final Signature si;
+		short cLen;
+
+		switch (alg) {
+		case PIV_ALG_ECCP256_SHA1:
+			si = ecdsaSha;
+			baseAlg = PIV_ALG_ECCP256;
+			break;
+		case PIV_ALG_ECCP256_SHA256:
+			si = ecdsaSha256;
+			baseAlg = PIV_ALG_ECCP256;
+			break;
+		case PIV_ALG_ECCP384_SHA1:
+			si = ecdsaSha;
+			baseAlg = PIV_ALG_ECCP384;
+			break;
+		case PIV_ALG_ECCP384_SHA256:
+			si = ecdsaSha256;
+			baseAlg = PIV_ALG_ECCP384;
+			break;
+		case PIV_ALG_ECCP384_SHA384:
+			si = ecdsaSha384;
+			baseAlg = PIV_ALG_ECCP384;
+			break;
+		default:
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot.asymAlg != baseAlg || slot.asym == null) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (si == null) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+			return;
+		}
+
+		if (wanted != GA_TAG_RESPONSE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		/* Are they asking for ECDH? */
+		if (tag == GA_TAG_EXP) {
+			final KeyAgreement ag = ecdhSha;
+			if (ag == null) {
+				tlv.abort();
+				ISOException.throwIt(
+				    ISO7816.SW_FUNC_NOT_SUPPORTED);
+				return;
+			}
+			if (alg != PIV_ALG_ECCP256_SHA1 &&
+			    alg != PIV_ALG_ECCP384_SHA1) {
+				tlv.abort();
+				ISOException.throwIt(
+				    ISO7816.SW_FUNC_NOT_SUPPORTED);
+				return;
+			}
+			processGenAuthEcdh(apdu, slot, ag);
+			return;
+		}
+
+		/* Otherwise they must be asking for a signature. */
+		if (tag != GA_TAG_CHALLENGE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		final short sLen = tlv.tagLength();
+		cLen = sLen;
+		switch (baseAlg) {
+		case PIV_ALG_ECCP256:
+			cLen = (short)75;
+			break;
+		case PIV_ALG_ECCP384:
+			cLen = (short)107;
+			break;
+		}
+
+		if (!bufmgr.alloc(cLen, outBuf)) {
+			ISOException.throwIt(ISO7816.SW_FILE_FULL);
+			return;
+		}
+
+		si.init(slot.asym.getPrivate(), Signature.MODE_SIGN);
+		short done = (short)0;
+		while (done < sLen) {
+			final short read = tlv.readPartial(tempBuf, sLen);
+			si.update(tempBuf.data(), tempBuf.rpos(), read);
+			done += read;
+		}
+		tlv.end();
+		cLen = si.sign(null, (short)0, (short)0,
+		    outBuf.data(), outBuf.wpos());
+		outBuf.write(cLen);
+
+		incoming.resetAndFree();
+
+		outgoing.reset();
+		wtlv.start(outgoing);
+		outgoingLe = apdu.setOutgoing();
+		wtlv.useApdu((short)0, outgoingLe);
+
+		wtlv.writeTagRealLen((byte)0x7c,
+		    TlvWriter.sizeWithByteTag(cLen));
+		wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
+		wtlv.write(outBuf);
+
+		wtlv.end();
+		sendOutgoing(apdu);
+	}
+//#endif
+
+	private void
+	processGeneralAuth(final APDU apdu)
+	{
+		final byte[] buffer = apdu.getBuffer();
+		final byte key;
+		byte alg, tag, wanted = 0;
+		final PivSlot slot;
+		final Readable input;
+
+		alg = buffer[ISO7816.OFFSET_P1];
+		key = buffer[ISO7816.OFFSET_P2];
+
+		if (key >= (byte)0x9A && key <= (byte)0x9E) {
+			final byte idx = (byte)(key - (byte)0x9A);
+			slot = slots[idx];
+		} else if (key >= MIN_HIST_SLOT && key <= MAX_HIST_SLOT) {
+			final byte idx = (byte)(SLOT_MIN_HIST +
+			    (byte)(key - MIN_HIST_SLOT));
+			slot = slots[idx];
+		} else {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot == null) {
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
+
+		if (slot.pinPolicy != PivSlot.P_NEVER &&
+		    !slot.flags[PivSlot.F_UNLOCKED]) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		if (!isContact() && slot.cert != null &&
+		    slot.cert.contactless == File.P_NEVER) {
+			ISOException.throwIt(
+			    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+			return;
+		}
+
+		input = receiveChain(apdu);
+		if (input == null)
+			return;
+
+		tlv.start(input);
+
+		if (tlv.readTag() != (byte)0x7C) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		/*
+		 * First, scan through the TLVs to figure out what the host
+		 * actually wants from us.
+		 */
+		while (!tlv.atEnd()) {
+			tag = tlv.readTag();
+			if (tlv.tagLength() == 0) {
+				wanted = tag;
+				break;
+			}
+			tlv.skip();
+		}
+
+		/* Now rewind, let's figure out what to do */
+		tlv.rewind();
+		tlv.readTag(); /* The 0x7C outer tag */
+
+		tag = tlv.readTag();
+		if (tag == wanted) {
+			tlv.skip();
+			if (!tlv.atEnd())
+				tag = tlv.readTag();
+		}
+
+		switch (alg) {
+		case PIV_ALG_DEFAULT:
+		case PIV_ALG_3DES:
+		case PIV_ALG_AES128:
+			processGenAuthSym(apdu, slot, alg, key, input,
+			    wanted, tag);
+			break;
+//#if PIV_SUPPORT_RSA
+		case PIV_ALG_RSA1024:
+		case PIV_ALG_RSA2048:
+			processGenAuthRsa(apdu, slot, alg, key, input,
+			    wanted, tag);
+			break;
+//#endif
+//#if PIV_SUPPORT_EC
+		case PIV_ALG_ECCP256:
+		case PIV_ALG_ECCP384:
+			processGenAuthEcPlain(apdu, slot, alg, key, input,
+			    wanted, tag);
+			break;
+		case PIV_ALG_ECCP256_SHA1:
+		case PIV_ALG_ECCP256_SHA256:
+		case PIV_ALG_ECCP384_SHA1:
+		case PIV_ALG_ECCP384_SHA256:
+		case PIV_ALG_ECCP384_SHA384:
+			processGenAuthEcHash(apdu, slot, alg, key, input,
+			    wanted, tag);
+			break;
+//#endif
+		default:
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
 	}
 
 	private void

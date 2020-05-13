@@ -40,6 +40,12 @@ public class TransientBuffer implements Buffer {
 		    JCSystem.CLEAR_ON_DESELECT);
 	}
 
+	public boolean
+	isAllocated()
+	{
+		return (state[ST_FLAGS] != (short)0);
+	}
+
 	public BaseBuffer
 	parent()
 	{
