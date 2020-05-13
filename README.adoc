@@ -165,7 +165,7 @@ The capfile will be output in the `./bin` directory, along with the `.class`
 files (which can be used with jCardSim).
 
 You can also download pre-built capfiles from the
-[releases page](https://github.com/arekinath/PivApplet/releases) here on GitHub.
+https://github.com/arekinath/PivApplet/releases[releases page] here on GitHub.
 
 The applet can be configured to suit different cards or needs by adjusting
 the feature flags in `build.xml` before running `ant`.
