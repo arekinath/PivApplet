@@ -2719,9 +2719,8 @@ public class PivApplet extends Applet
 			wtlv.start(outgoing);
 			outgoingLe = apdu.setOutgoing();
 			wtlv.useApdu((short)0, outgoingLe);
-			wtlv.push((byte)0x53, file.len);
+			wtlv.writeTagRealLen((byte)0x53, file.len);
 			wtlv.write(file.data, (short)0, file.len);
-			wtlv.pop();
 			wtlv.end();
 			sendOutgoing(apdu);
 
@@ -2749,15 +2748,13 @@ public class PivApplet extends Applet
 		wtlv.push((byte)0x7E);
 
 		/* AID */
-		wtlv.push((byte)0x4F);
+		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
 		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
-		wtlv.pop();
 
 		/* PIN policy */
-		wtlv.push((short)0x5F2F);
+		wtlv.writeTagRealLen((short)0x5F2F, (short)2);
 		wtlv.writeByte((byte)0x40);	/* PIV pin only, no others */
 		wtlv.writeByte((byte)0x00);	/* RFU, since no global PIN */
-		wtlv.pop();
 
 		wtlv.pop();
 		wtlv.end();
