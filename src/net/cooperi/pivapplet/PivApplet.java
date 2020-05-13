@@ -2027,6 +2027,8 @@ public class PivApplet extends Applet
 				    outBuf.data(), outBuf.wpos());
 				outBuf.write(cLen);
 
+				incoming.resetAndFree();
+
 			} else if (slot.asymAlg == PIV_ALG_ECCP256) {
 				switch (alg) {
 				case PIV_ALG_ECCP256_SHA256:
@@ -2056,6 +2058,8 @@ public class PivApplet extends Applet
 				cLen = si.sign(null, (short)0, (short)0,
 				    outBuf.data(), outBuf.wpos());
 				outBuf.write(cLen);
+
+				incoming.resetAndFree();
 //#endif
 			} else {
 				tlv.abort();
@@ -2064,17 +2068,15 @@ public class PivApplet extends Applet
 			}
 
 			outgoing.reset();
-			incoming.reset();
 			wtlv.start(outgoing);
 			outgoingLe = apdu.setOutgoing();
 			wtlv.useApdu((short)0, outgoingLe);
 
-			wtlv.push((byte)0x7C, (short)(cLen + 4));
-			wtlv.push(GA_TAG_RESPONSE, cLen);
+			wtlv.writeTagRealLen((byte)0x7c,
+			    TlvWriter.sizeWithByteTag(cLen));
+			wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
 			wtlv.write(outBuf);
-			wtlv.pop();
 
-			wtlv.pop();
 			wtlv.end();
 			sendOutgoing(apdu);
 			break;

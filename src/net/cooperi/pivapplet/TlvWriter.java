@@ -9,6 +9,7 @@
 package net.cooperi.pivapplet;
 
 import javacard.framework.JCSystem;
+import javacard.framework.Util;
 
 public class TlvWriter {
 /*#if APPLET_LOW_TRANSIENT
@@ -24,6 +25,7 @@ public class TlvWriter {
 	private short[] stackBuf = null;
 	private short[] stackOff = null;
 	private short[] stackWPtr = null;
+	private byte[] tmp = null;
 
 	private SGList scratch = null;
 
@@ -37,6 +39,8 @@ public class TlvWriter {
 		stackOff = JCSystem.makeTransientShortArray(STACK_SIZE,
 		    JCSystem.CLEAR_ON_DESELECT);
 		stackWPtr = JCSystem.makeTransientShortArray(STACK_SIZE,
+		    JCSystem.CLEAR_ON_DESELECT);
+		tmp = JCSystem.makeTransientByteArray((short)5,
 		    JCSystem.CLEAR_ON_DESELECT);
 		s = JCSystem.makeTransientShortArray((short)(PTR + 1),
 		    JCSystem.CLEAR_ON_DESELECT);
@@ -121,6 +125,70 @@ public class TlvWriter {
 			push256(tag);
 		} else {
 			push(tag);
+		}
+	}
+
+	public static short
+	sizeWithByteTag(final short len)
+	{
+		if (len > (short)250) {
+			return ((short)(len + 4));
+		} else if (len > (short)124) {
+			return ((short)(len + 3));
+		} else {
+			return ((short)(len + 2));
+		}
+	}
+
+	public static short
+	sizeWithShortTag(final short len)
+	{
+		if (len > (short)250) {
+			return ((short)(len + 5));
+		} else if (len > (short)124) {
+			return ((short)(len + 4));
+		} else {
+			return ((short)(len + 3));
+		}
+	}
+
+	/*
+	 * Optimised tag writing for when we have a known length in advance
+	 * for the tag.
+	 */
+	public void
+	writeTagRealLen(final byte tag, final short len)
+	{
+		tmp[0] = tag;
+		if (len > (short)250) {
+			tmp[1] = (byte)0x82;
+			Util.setShort(tmp, (short)2, len);
+			scratch.write(tmp, (short)0, (short)4);
+		} else if (len > (short)124) {
+			tmp[1] = (byte)0x81;
+			tmp[2] = (byte)len;
+			scratch.write(tmp, (short)0, (short)3);
+		} else {
+			tmp[1] = (byte)len;
+			scratch.write(tmp, (short)0, (short)2);
+		}
+	}
+
+	public void
+	writeTagRealLen(short tag, short len)
+	{
+		Util.setShort(tmp, (short)0, tag);
+		if (len > (short)250) {
+			tmp[2] = (byte)0x82;
+			Util.setShort(tmp, (short)3, len);
+			scratch.write(tmp, (short)0, (short)5);
+		} else if (len > (short)124) {
+			tmp[2] = (byte)0x81;
+			tmp[3] = (byte)len;
+			scratch.write(tmp, (short)0, (short)4);
+		} else {
+			tmp[2] = (byte)len;
+			scratch.write(tmp, (short)0, (short)3);
 		}
 	}
 

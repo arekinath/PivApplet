@@ -86,9 +86,21 @@ public class SGList implements Readable {
 	{
 		for (short i = 0; i <= state[WPTR_BUF]; ++i) {
 			final Buffer buf = buffers[i];
+			buf.reset();
+		}
+		state[WPTR_BUF] = (short)0;
+		state[RPTR_BUF] = (short)0;
+		state[RPTR_TOTOFF] = (short)0;
+		state[WPTR_TOTOFF] = (short)0;
+	}
+
+	public void
+	resetAndFree()
+	{
+		for (short i = 0; i <= state[WPTR_BUF]; ++i) {
+			final Buffer buf = buffers[i];
 			buf.free();
 		}
-
 		state[WPTR_BUF] = (short)0;
 		state[RPTR_BUF] = (short)0;
 		state[RPTR_TOTOFF] = (short)0;
