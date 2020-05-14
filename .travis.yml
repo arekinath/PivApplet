@@ -58,9 +58,15 @@ script:
     sleep 5;
     opensc-tool --card-driver default --send-apdu 80b80000120ba000000308000010000100050000020F0F7f;
     opensc-tool -n;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9a -a generate -A ECCP256;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9e -a generate -A RSA2048;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9d -a generate -A ECCP384;
+    yubico-piv-tool -r '' -a list-readers;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -a status;
+
+    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9a -P 123456 -a generate -A ECCP256 | tee pubkey-9a.pem;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9e -P 123456 -a generate -A RSA2048 | tee pubkey-9e.pem;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9d -P 123456 -a generate -A ECCP384 | tee pubkey-9d;
+
+    yubico-piv-tool -r 'Virtual PCD 00 00' -a status;
+
     kill -9 $PID;
 
     sudo kill -9 $PCSCD_PID;
