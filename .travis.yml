@@ -1,20 +1,68 @@
-language: java
+language: generic
+os: linux
+dist: bionic
 
-env:
-   - JC_HOME=$TRAVIS_BUILD_DIR/jckit/java_card_kit-2_2_2
+addons:
+  apt:
+    packages:
+    - pcscd
+    - pcsc-tools
+    - libpcsclite-dev
+    - docbook-xsl
+    - xsltproc
+    - help2man
+    - ant
+    - socat
+    - yubico-piv-tool
+    - opensc
+    - gcc
+    - openjdk-8-jdk
 
 before_script:
-   - git submodule init
-   - git submodule update
-   - mkdir jckit
-   - cd jckit
-   - "[ -f java_card_kit-2_2_2-linux.zip ] || curl -L http://download.oracle.com/otn-pub/java/java_card_kit/2.2.2/java_card_kit-2_2_2-linux.zip -o java_card_kit-2_2_2-linux.zip --cookie oraclelicense=accept-securebackup-cookie"
-   - unzip java_card_kit-2_2_2-linux.zip
-   - cd java_card_kit-2_2_2/
-   - unzip java_card_kit-2_2_2-rr-bin-linux-do.zip
-   - cd $TRAVIS_BUILD_DIR 
-script: ant dist
+  - set -ex;
 
-cache:
-   files:
-      - $TRAVIS_BUILD_DIR/java_card_kit-2_2_2-linux.zip
+    sudo update-java-alternatives -s java-1.8.0-openjdk-amd64;
+    sudo update-alternatives --get-selections | grep ^java;
+    export PATH="/usr/lib/jvm/java-8-openjdk-amd64/bin/:$PATH";
+    export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/;
+    env | grep -i openjdk;
+
+    git clone https://github.com/frankmorgner/vsmartcard.git;
+    cd vsmartcard/virtualsmartcard;
+    autoreconf -vis && ./configure && sudo make install;
+    cd $TRAVIS_BUILD_DIR;
+    sudo /etc/init.d/pcscd restart;
+
+    git clone https://github.com/martinpaljak/oracle_javacard_sdks.git;
+    export JC_HOME=$PWD/oracle_javacard_sdks/jc305u3_kit;
+    export JC_CLASSIC_HOME=$PWD/oracle_javacard_sdks/jc305u3_kit;
+
+    git clone https://github.com/arekinath/jcardsim.git;
+    cd jcardsim;
+    mvn initialize && mvn clean install;
+    cd $TRAVIS_BUILD_DIR;
+
+    ant dist;
+
+    set +ex;
+
+script:
+  - set -ex;
+
+    sudo systemctl stop pcscd.service pcscd.socket;
+    sudo /usr/sbin/pcscd -f &
+    PCSCD_PID=$!;
+
+    java -noverify -cp bin/:jcardsim/target/jcardsim-3.0.5-SNAPSHOT.jar com.licel.jcardsim.remote.VSmartCard test/jcardsim.cfg >/dev/null &
+    PID=$!;
+    sleep 5;
+    opensc-tool --card-driver default --send-apdu 80b80000120ba000000308000010000100050000020F0F7f;
+    opensc-tool -n;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9a -a generate -A ECCP256;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9e -a generate -A RSA2048;
+    yubico-piv-tool -r 'Virtual PCD 00 00' -P 123456 -s 9d -a generate -A ECCP384;
+    kill -9 $PID;
+
+    sudo kill -9 $PCSCD_PID;
+
+    set +ex;
