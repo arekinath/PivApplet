@@ -1,0 +1,382 @@
+#!/usr/bin/env ruby
+require 'minitest/autorun'
+require 'openssl'
+
+Reader = ARGV[0]
+DefaultPin = "123456"
+DefaultPuk = "12345678"
+TestDir = __dir__
+
+$pin = DefaultPin
+$guid = nil
+
+def ykpivtool(*opts)
+	cmd = "yubico-piv-tool -r '#{Reader}'"
+	opts.each do |opt|
+		if opt.kind_of? Symbol
+			if opt == :verify_pin
+				cmd += " -P #{$pin}"
+			end
+			cmd += " -a #{opt.to_s.gsub('_', '-')}"
+		else
+			cmd += " #{opt}"
+		end
+	end
+	`#{cmd} 2>/dev/null`
+end
+
+class TestYubicoBasic < Minitest::Test
+	i_suck_and_my_tests_are_order_dependent!
+
+	def test_01_reader_exists
+		out = `yubico-piv-tool -r '' -a list-readers`.split("\n")
+		assert_equal(0, $?)
+		assert_includes(out, Reader)
+	end
+
+	def test_02_status
+		out = ykpivtool(:status)
+		assert_equal(0, $?)
+		assert_match(/^CHUID:/, out)
+		assert_match(/^CCC:/, out)
+		assert_match(/^PIN tries left:\s5$/, out)
+	end
+
+	def test_03_generate
+		out = ykpivtool(:generate, '-s 9a', '-A ECCP256')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN PUBLIC KEY-----$/, out)
+
+		@pubkey = OpenSSL::PKey.read(out)
+		assert(@pubkey.kind_of? OpenSSL::PKey::EC)
+
+		f = File.new("#{TestDir}/pubkey-9a.pem", 'w')
+		f.write(out)
+		f.close
+	end
+
+	def test_04_verify_pin
+		out = ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+	end
+
+	def test_05_selfsign
+		out = ykpivtool(:verify_pin, :selfsign_certificate,
+			'-s 9a', '-S "/CN=test"', "< #{TestDir}/pubkey-9a.pem")
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+
+		cert = OpenSSL::X509::Certificate.new(out)
+		assert_match(/^ecdsa-with-/, cert.signature_algorithm)
+		@pubkey = OpenSSL::PKey.read(
+			File.new("#{TestDir}/pubkey-9a.pem").read())
+		assert(cert.verify(@pubkey))
+
+		f = File.new("#{TestDir}/cert-9a.pem", 'w')
+		f.write(out)
+		f.close
+	end
+
+	def test_06_import_cert
+		out = ykpivtool(:import_certificate, '-s 9a',
+			"< #{TestDir}/cert-9a.pem")
+		assert_equal(0, $?)
+	end
+
+	def test_07_status_again
+		out = ykpivtool(:status)
+		assert_equal(0, $?)
+		assert_match(/^Slot 9a:/, out)
+		assert_match(/Algorithm:\s+ECCP256$/, out)
+		assert_match(/Subject DN:\s+CN=test$/, out)
+	end
+end
+
+class TestYubicoAlgs < Minitest::Test
+	i_suck_and_my_tests_are_order_dependent!
+
+	def test_01_generate_rsa1024
+		out = ykpivtool(:generate, '-s 9e', '-A RSA1024')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN PUBLIC KEY-----$/, out)
+
+		@pubkey = OpenSSL::PKey.read(out)
+		assert(@pubkey.kind_of? OpenSSL::PKey::RSA)
+
+		f = File.new("#{TestDir}/pubkey-9e.pem", 'w')
+		f.write(out)
+		f.close
+	end
+
+	def test_02_selfsign_rsa1024
+		out = ykpivtool(:selfsign_certificate, '-s 9e',
+			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+
+		cert = OpenSSL::X509::Certificate.new(out)
+		assert_match(/WithRSAEncryption$/, cert.signature_algorithm)
+		@pubkey = OpenSSL::PKey.read(
+			File.new("#{TestDir}/pubkey-9e.pem").read())
+		assert(cert.verify(@pubkey))
+	end
+
+	def test_03_generate_rsa2048
+		out = ykpivtool(:generate, '-s 9e', '-A RSA2048')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN PUBLIC KEY-----$/, out)
+
+		@pubkey = OpenSSL::PKey.read(out)
+		assert(@pubkey.kind_of? OpenSSL::PKey::RSA)
+
+		f = File.new("#{TestDir}/pubkey-9e.pem", 'w')
+		f.write(out)
+		f.close
+	end
+
+	def test_04_selfsign_rsa2048
+		out = ykpivtool(:selfsign_certificate, '-s 9e',
+			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+
+		cert = OpenSSL::X509::Certificate.new(out)
+		assert_match(/WithRSAEncryption$/, cert.signature_algorithm)
+		@pubkey = OpenSSL::PKey.read(
+			File.new("#{TestDir}/pubkey-9e.pem").read())
+		assert(cert.verify(@pubkey))
+	end
+
+	def test_05_generate_eccp384
+		out = ykpivtool(:generate, '-s 9e', '-A ECCP384')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN PUBLIC KEY-----$/, out)
+
+		@pubkey = OpenSSL::PKey.read(out)
+		assert(@pubkey.kind_of? OpenSSL::PKey::EC)
+
+		f = File.new("#{TestDir}/pubkey-9e.pem", 'w')
+		f.write(out)
+		f.close
+	end
+
+	def test_06_selfsign_eccp384
+		out = ykpivtool(:selfsign_certificate, '-s 9e',
+			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+
+		cert = OpenSSL::X509::Certificate.new(out)
+		assert_match(/^ecdsa-with-/, cert.signature_algorithm)
+		@pubkey = OpenSSL::PKey.read(
+			File.new("#{TestDir}/pubkey-9e.pem").read())
+		assert(cert.verify(@pubkey))
+	end
+end
+
+class TestYubicoPIN < Minitest::Test
+	i_suck_and_my_tests_are_order_dependent!
+
+	def test_01_block_pin
+		# pin is ok
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+
+		# deliberately block the pin
+		$pin = '111111'
+		5.times do
+			ykpivtool(:verify_pin)
+			refute_equal(0, $?)
+		end
+
+		# is it blocked?
+		$pin = DefaultPin
+		ykpivtool(:verify_pin)
+		refute_equal(0, $?)
+	end
+
+	def test_02_unblock_pin
+		ykpivtool(:unblock_pin, "-P #{DefaultPuk}", "-N #{DefaultPin}")
+		assert_equal(0, $?)
+
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+	end
+
+	def test_03_change_pin
+		@newpin = '9919919'
+		ykpivtool(:change_pin, "-P #{DefaultPin}", "-N #{@newpin}")
+		assert_equal(0, $?)
+
+		ykpivtool(:verify_pin)
+		refute_equal(0, $?)
+
+		$pin = @newpin
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+
+		ykpivtool(:change_pin, "-P #{@newpin}", "-N #{DefaultPin}")
+		assert_equal(0, $?)
+
+		$pin = DefaultPin
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+	end
+
+	def test_04_change_puk
+		@newpuk = '87654321'
+		ykpivtool(:change_puk, "-P #{DefaultPuk}", "-N #{@newpuk}")
+		assert_equal(0, $?)
+
+		$pin = '111111'
+		5.times do
+			ykpivtool(:verify_pin)
+			refute_equal(0, $?)
+		end
+		$pin = DefaultPin
+		ykpivtool(:verify_pin)
+		refute_equal(0, $?)
+
+		ykpivtool(:unblock_pin, "-P #{DefaultPuk}", "-N #{DefaultPin}")
+		refute_equal(0, $?)
+		ykpivtool(:verify_pin)
+		refute_equal(0, $?)
+
+		ykpivtool(:unblock_pin, "-P #{@newpuk}", "-N #{DefaultPin}")
+		assert_equal(0, $?)
+
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+
+		ykpivtool(:change_puk, "-P #{@newpuk}", "-N #{DefaultPuk}")
+		assert_equal(0, $?)
+	end
+
+	def test_05_applet_reset
+		$pin = '111111'
+		5.times do
+			ykpivtool(:verify_pin)
+			refute_equal(0, $?)
+		end
+		$pin = DefaultPin
+		ykpivtool(:verify_pin)
+		refute_equal(0, $?)
+
+		5.times do
+			ykpivtool(:unblock_pin, "-P 11111111", "-N #{DefaultPin}")
+			refute_equal(0, $?)
+		end
+		ykpivtool(:unblock_pin, "-P #{DefaultPuk}", "-N #{DefaultPin}")
+		refute_equal(0, $?)
+
+		ykpivtool(:reset)
+		assert_equal(0, $?)
+
+		ykpivtool(:verify_pin)
+		assert_equal(0, $?)
+	end
+end
+
+class TestAttestation < Minitest::Test
+	i_suck_and_my_tests_are_order_dependent!
+
+	def test_01_attest
+		out = ykpivtool(:generate, '-s 9e', '-A ECCP256')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN PUBLIC KEY-----$/, out)
+
+		@pubkey = OpenSSL::PKey.read(out)
+		assert(@pubkey.kind_of? OpenSSL::PKey::EC)
+
+		out = ykpivtool(:read_certificate, '-s f9')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+		@f9cert = OpenSSL::X509::Certificate.new(out)
+
+		out = ykpivtool(:attest, '-s 9e')
+		assert_equal(0, $?)
+		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
+
+		@cert = OpenSSL::X509::Certificate.new(out)
+		assert_equal(@pubkey.to_der, @cert.public_key.to_der)
+		assert(@cert.verify(@f9cert.public_key))
+
+		exts = @cert.extensions
+		oids = exts.map { |x| x.oid }
+		assert_includes(oids, '1.3.6.1.4.1.41482.3.3')
+		assert_includes(oids, '1.3.6.1.4.1.41482.3.8')
+	end
+end
+
+class TestPivyBasic < Minitest::Test
+	i_suck_and_my_tests_are_order_dependent!
+
+	def test_01_list
+		out = `pivy-tool -p list`.split("\n").map { |r| r.split(":") }
+		assert_equal(0, $?)
+		out.each do |r|
+			$guid = r[1] if r[0].include?(Reader)
+		end
+		out = `pivy-tool list -g #{$guid}`
+		assert_equal(0, $?)
+		assert_match(/device: #{Reader}/, out)
+		assert_match(/applet: PivApplet v[0-9.]+/, out)
+		assert_match(/yubico: .* \(v5\.3\.0\)$/, out)
+	end
+
+	def test_02_set_admin
+		out = `pivy-tool -g #{$guid} set-admin random`
+		assert_equal(0, $?)
+
+		ykpivtool(:generate, '-s 9e', '-A RSA1024')
+		refute_equal(0, $?)
+	end
+
+	def test_03_gen_9d
+		out = `pivy-tool -P #{DefaultPin} -g #{$guid} generate -a eccp256 9d`
+		assert_equal(0, $?)
+	end
+
+	def test_04_unbox
+		out = `echo hello world | pivy-tool -g #{$guid} box 9d`
+		assert_equal(0, $?)
+
+		f = File.new("#{TestDir}/test.ebox", 'w')
+		f.write(out)
+		f.close()
+
+		out = `pivy-tool unbox -P #{DefaultPin} < #{TestDir}/test.ebox`
+		assert_equal(0, $?)
+		assert_match(/^hello world$/, out)
+	end
+
+	def test_05_import
+		@key = OpenSSL::PKey::RSA.new(2048)
+		f = File.new("#{TestDir}/testkey.pem", 'w')
+		f.write(@key.to_pem)
+		f.close()
+
+		out = `pivy-tool -g #{$guid} -P #{DefaultPin} import 82 < #{TestDir}/testkey.pem`
+		assert_equal(0, $?)
+
+		out = `pivy-tool -g #{$guid} cert 82`
+		assert_equal(0, $?)
+		@cert = OpenSSL::X509::Certificate.new(out)
+		assert(@cert.verify(@key.public_key))
+	end
+
+	def test_06_reset_admin
+		# pivy-tool set-admin doesn't yet get the pinfo admin key in
+		# 0.5.0 :( change this after next ver?
+		out = ykpivtool(:verify_pin, :read_object, '--id 0x5FC109')
+		assert_equal(0, $?)
+		assert(/^881a8918([0-9a-fA-F]+)$/.match(out))
+		@adminkey = $1
+
+		out = `pivy-tool -g #{$guid} -K #{@adminkey} set-admin default`
+		assert_equal(0, $?)
+
+		ykpivtool(:generate, '-s 9e', '-A RSA1024')
+		assert_equal(0, $?)
+	end
+end

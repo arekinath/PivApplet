@@ -2,3 +2,5 @@
 /jckit/
 /src-gen/
 java_card_kit-2_2_2-linux.zip
+/test/*.pem
+/test/*.ebox

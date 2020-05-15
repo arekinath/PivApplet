@@ -34,15 +34,22 @@ before_script:
     sudo /etc/init.d/pcscd restart;
 
     git clone https://github.com/martinpaljak/oracle_javacard_sdks.git;
-    export JC_HOME=$PWD/oracle_javacard_sdks/jc305u3_kit;
-    export JC_CLASSIC_HOME=$PWD/oracle_javacard_sdks/jc305u3_kit;
+    export JC_SDKS=$PWD/oracle_javacard_sdks;
+    export JC_HOME=$JC_SDKS/jc305u3_kit;
+    export JC_CLASSIC_HOME=$JC_HOME;
 
     git clone https://github.com/arekinath/jcardsim.git;
     cd jcardsim;
-    mvn initialize && mvn clean install;
+    mvn initialize && mvn clean install -DskipTests;
     cd $TRAVIS_BUILD_DIR;
 
+    export JC_HOME=$JC_SDKS/jc304_kit;
     ant dist;
+
+    sudo wget https://github.com/arekinath/pivy/releases/download/v0.5.1/pivy_0.5.1-1_bionic_amd64.deb;
+    sudo dpkg -i pivy_0.5.1-1_bionic_amd64.deb;
+
+    gem install minitest;
 
     set +ex;
 
@@ -58,14 +65,8 @@ script:
     sleep 5;
     opensc-tool --card-driver default --send-apdu 80b80000120ba000000308000010000100050000020F0F7f;
     opensc-tool -n;
-    yubico-piv-tool -r '' -a list-readers;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -a status;
 
-    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9a -P 123456 -a generate -A ECCP256 | tee pubkey-9a.pem;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9e -P 123456 -a generate -A RSA2048 | tee pubkey-9e.pem;
-    yubico-piv-tool -r 'Virtual PCD 00 00' -s 9d -P 123456 -a generate -A ECCP384 | tee pubkey-9d;
-
-    yubico-piv-tool -r 'Virtual PCD 00 00' -a status;
+    ./test/simulator-tests 'Virtual PCD 00 00';
 
     kill -9 $PID;
 
