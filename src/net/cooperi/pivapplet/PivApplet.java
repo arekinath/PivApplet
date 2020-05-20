@@ -635,21 +635,19 @@ public class PivApplet extends Applet
 			outgoingLe = apdu.setOutgoing();
 			wtlv.useApdu((short)0, outgoingLe);
 
-			wtlv.push((byte)0x05);
+			wtlv.writeTagRealLen((byte)0x05, (short)1);
 			if (key == (byte)0x80 && pivPinIsDefault)
 				wtlv.writeByte((byte)1);
 			else if (key == (byte)0x81 && pukPinIsDefault)
 				wtlv.writeByte((byte)1);
 			else
 				wtlv.writeByte((byte)0);
-			wtlv.pop();
 
-			wtlv.push((byte)0x06);
+			wtlv.writeTagRealLen((byte)0x06, (short)1);
 			if (key == (byte)0x80)
 				wtlv.writeByte(pinRetries);
 			else if (key == (byte)0x81)
 				wtlv.writeByte(pukRetries);
-			wtlv.pop();
 
 			wtlv.end();
 			sendOutgoing(apdu);
@@ -684,31 +682,25 @@ public class PivApplet extends Applet
 		wtlv.useApdu((short)0, outgoingLe);
 
 		if (slot.asym != null) {
-			wtlv.push((byte)0x01);
+			wtlv.writeTagRealLen((byte)0x01, (short)1);
 			wtlv.writeByte(slot.asymAlg);
-			wtlv.pop();
 		} else if (slot.sym != null) {
-			wtlv.push((byte)0x01);
+			wtlv.writeTagRealLen((byte)0x01, (short)1);
 			wtlv.writeByte(slot.symAlg);
-			wtlv.pop();
 		}
 
-		wtlv.push((byte)0x02);
+		wtlv.writeTagRealLen((byte)0x02, (short)2);
 		wtlv.writeByte(slot.pinPolicy);
 		wtlv.writeByte((byte)0);
-		wtlv.pop();
 
-		wtlv.push((byte)0x03);
+		wtlv.writeTagRealLen((byte)0x03, (short)1);
 		if (slot.imported)
 			wtlv.writeByte((byte)1);
 		else
 			wtlv.writeByte((byte)0);
-		wtlv.pop();
 
 		if (slot.asym != null) {
 			short len;
-
-			wtlv.push((byte)0x04);
 			switch (slot.asymAlg) {
 //#if PIV_SUPPORT_RSA
 			case PIV_ALG_RSA1024:
@@ -717,6 +709,7 @@ public class PivApplet extends Applet
 				    (RSAPublicKey)slot.asym.getPublic();
 				final short rsalen = (short)(rpubk.getSize() / 8);
 
+				wtlv.push((byte)0x04, (short)(rsalen + 12));
 				wtlv.push((byte)0x81, (short)(rsalen + 1));
 				wtlv.startReserve((short)(rsalen + 1), tempBuf);
 				len = rpubk.getModulus(tempBuf.data(), tempBuf.wpos());
@@ -737,6 +730,7 @@ public class PivApplet extends Applet
 				    (ECPublicKey)slot.asym.getPublic();
 				final short eclen = (short)(epubk.getSize() / 4);
 
+				wtlv.push((byte)0x04, (short)(eclen + 4));
 				wtlv.push((byte)0x86, (short)(eclen + 1));
 				wtlv.startReserve((short)(eclen + 1), tempBuf);
 				len = epubk.getW(tempBuf.data(), tempBuf.wpos());
