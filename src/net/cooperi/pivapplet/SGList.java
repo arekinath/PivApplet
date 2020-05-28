@@ -122,7 +122,7 @@ public class SGList implements Readable {
 		}
 	}
 
-	@Override
+
 	public void
 	rewind()
 	{
@@ -299,7 +299,6 @@ public class SGList implements Readable {
 		incWPtr(used);
 	}
 
-	@Override
 	public short
 	read(final TransientBuffer into, final short len)
 	{
@@ -314,7 +313,6 @@ public class SGList implements Readable {
 		return (wrote);
 	}
 
-	@Override
 	public short
 	readPartial(final TransientBuffer into, final short maxLen)
 	{
@@ -374,7 +372,7 @@ public class SGList implements Readable {
 		return (done);
 	}
 
- @Override
+
 	public boolean
 	atEnd()
 	{
@@ -385,7 +383,7 @@ public class SGList implements Readable {
 		return (true);
 	}
 
- @Override
+
 	public short
 	available()
 	{
@@ -411,7 +409,7 @@ public class SGList implements Readable {
 		return (buf.data()[buf.wpos()]);
 	}
 
- @Override
+
 	public byte
 	readByte()
 	{
@@ -426,7 +424,7 @@ public class SGList implements Readable {
 		return (v);
 	}
 
- @Override
+
 	public short
 	readShort()
 	{
@@ -443,7 +441,7 @@ public class SGList implements Readable {
 		return (v);
 	}
 
- @Override
+
 	public void
 	skip(short len)
 	{
@@ -483,7 +481,7 @@ public class SGList implements Readable {
 		state[WPTR_TOTOFF] += len;
 	}
 
- @Override
+
 	public short
 	read(final byte[] dest, short offset, final short maxLen)
 	{

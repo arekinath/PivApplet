@@ -30,7 +30,9 @@ import javacard.security.RSAPublicKey;
 import javacard.security.RandomData;
 import javacard.security.Signature;
 import javacardx.crypto.Cipher;
+//#if APPLET_EXTLEN
 import javacardx.apdu.ExtendedLength;
+//#endif
 
 //#if APPLET_EXTLEN
 public class PivApplet extends Applet implements ExtendedLength
@@ -468,7 +470,6 @@ public class PivApplet extends Applet
 //#endif
 	}
 
- @Override
 	public void
 	process(APDU apdu)
 	{
@@ -477,10 +478,19 @@ public class PivApplet extends Applet
 		final byte chainBit =
 		    (byte)(buffer[ISO7816.OFFSET_CLA] & (byte)0x10);
 
+//#if APPLET_EXTLEN
 		if (!apdu.isISOInterindustryCLA()) {
 			ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
 			return;
 		}
+/*#else
+		final byte isoInterBit =
+		    (byte)(buffer[ISO7816.OFFSET_CLA] & (byte)0x80);
+		if (isoInterBit != 0) {
+			ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
+			return;
+		}
+#endif*/
 
 		if (selectingApplet()) {
 			sendSelectResponse(apdu);
@@ -935,7 +945,12 @@ public class PivApplet extends Applet
 #endif*/
 
 		if (chainBit == 0 && incoming.atEnd()) {
-			if (recvLen != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+			final short lc = apdu.getIncomingLength();
+/*#else
+			final short lc = buf[ISO7816.OFFSET_LC];
+#endif*/
+			if (recvLen != lc) {
 				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 				return (null);
 			}
@@ -1001,7 +1016,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
@@ -1565,7 +1585,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
@@ -2233,7 +2258,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
@@ -2309,7 +2339,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
@@ -2376,7 +2411,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
@@ -2634,7 +2674,12 @@ public class PivApplet extends Applet
 		}
 
 		lc = apdu.setIncomingAndReceive();
-		if (lc != apdu.getIncomingLength()) {
+//#if APPLET_EXTLEN
+		final short inLc = apdu.getIncomingLength();
+/*#else
+		final short inLc = buffer[ISO7816.OFFSET_LC];
+#endif*/
+		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
