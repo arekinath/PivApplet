@@ -49,7 +49,7 @@ public class PivApplet extends Applet
 
 	private static final byte[] APP_NAME = {
 	    'P', 'i', 'v', 'A', 'p', 'p', 'l', 'e', 't', ' ',
-	    'v', '0', '.', '8', '.', '0', '/',
+	    'v', '0', '.', '8', '.', '1', '/',
 //#if PIV_SUPPORT_RSA
 	    'R',
 //#endif
