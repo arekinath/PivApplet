@@ -579,6 +579,15 @@ public class PivApplet extends Applet
 		return (false);
 	}
 
+/*#if !APPLET_EXTLEN
+	private short
+	getIncomingLengthCompat(final APDU apdu)
+	{
+		final byte[] buf = apdu.getBuffer();
+		return ((short)((short)buf[ISO7816.OFFSET_LC] & 0x00FF));
+	}
+#endif*/
+
 	private void
 	lockPINAlwaysSlots()
 	{
@@ -948,7 +957,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 			final short lc = apdu.getIncomingLength();
 /*#else
-			final short lc = buf[ISO7816.OFFSET_LC];
+			final short lc = getIncomingLengthCompat(apdu);
 #endif*/
 			if (recvLen != lc) {
 				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -1019,7 +1028,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -1588,7 +1597,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -2261,7 +2270,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -2342,7 +2351,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -2414,7 +2423,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
@@ -2677,7 +2686,7 @@ public class PivApplet extends Applet
 //#if APPLET_EXTLEN
 		final short inLc = apdu.getIncomingLength();
 /*#else
-		final short inLc = buffer[ISO7816.OFFSET_LC];
+		final short inLc = getIncomingLengthCompat(apdu);
 #endif*/
 		if (lc != inLc) {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
