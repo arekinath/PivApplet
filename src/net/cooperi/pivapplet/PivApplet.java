@@ -1118,6 +1118,11 @@ public class PivApplet extends Applet
 			return;
 		}
 
+//#if PIV_SUPPORT_EC
+		final ECPrivateKey ecPriv;
+		final ECPublicKey ecPub;
+//#endif
+
 		switch (alg) {
 //#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
@@ -1141,9 +1146,8 @@ public class PivApplet extends Applet
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
+
 			if (slot.asym == null || slot.asymAlg != alg) {
-				final ECPrivateKey ecPriv;
-				final ECPublicKey ecPub;
 				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
 				    KeyBuilder.TYPE_EC_FP_PRIVATE,
 				    (short)256, false);
@@ -1152,9 +1156,14 @@ public class PivApplet extends Applet
 				    (short)256, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParametersP256(ecPriv);
-				ECParams.setCurveParametersP256(ecPub);
+			} else {
+				ecPriv = (ECPrivateKey)slot.asym.getPrivate();
+				ecPub = (ECPublicKey)slot.asym.getPublic();
+				ecPriv.clearKey();
+				ecPub.clearKey();
 			}
+			ECParams.setCurveParametersP256(ecPriv);
+			ECParams.setCurveParametersP256(ecPub);
 			slot.asymAlg = alg;
 			break;
 		case PIV_ALG_ECCP384:
@@ -1163,8 +1172,6 @@ public class PivApplet extends Applet
 				return;
 			}
 			if (slot.asym == null || slot.asymAlg != alg) {
-				final ECPrivateKey ecPriv;
-				final ECPublicKey ecPub;
 				ecPriv = (ECPrivateKey)KeyBuilder.buildKey(
 				    KeyBuilder.TYPE_EC_FP_PRIVATE,
 				    (short)384, false);
@@ -1173,9 +1180,14 @@ public class PivApplet extends Applet
 				    (short)384, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParametersP384(ecPriv);
-				ECParams.setCurveParametersP384(ecPub);
+			} else {
+				ecPriv = (ECPrivateKey)slot.asym.getPrivate();
+				ecPub = (ECPublicKey)slot.asym.getPublic();
+				ecPriv.clearKey();
+				ecPub.clearKey();
 			}
+			ECParams.setCurveParametersP384(ecPriv);
+			ECParams.setCurveParametersP384(ecPub);
 			slot.asymAlg = alg;
 			break;
 //#endif
@@ -1335,8 +1347,6 @@ public class PivApplet extends Applet
 				    (short)256, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParametersP256(ecPriv);
-				ECParams.setCurveParametersP256(ecPub);
 			}
 			slot.asymAlg = alg;
 			break;
@@ -1357,8 +1367,6 @@ public class PivApplet extends Applet
 				    (short)384, false);
 				slot.asym = new KeyPair(
 				    (PublicKey)ecPub, (PrivateKey)ecPriv);
-				ECParams.setCurveParametersP384(ecPriv);
-				ECParams.setCurveParametersP384(ecPub);
 			}
 			slot.asymAlg = alg;
 			break;
@@ -1488,6 +1496,14 @@ public class PivApplet extends Applet
 			epubk.clearKey();
 			eprivk.clearKey();
 
+			if (alg == PIV_ALG_ECCP256) {
+				ECParams.setCurveParametersP256(eprivk);
+				ECParams.setCurveParametersP256(epubk);
+			} else if (alg == PIV_ALG_ECCP384) {
+				ECParams.setCurveParametersP384(eprivk);
+				ECParams.setCurveParametersP384(epubk);
+			}
+
 			while (!tlv.atEnd()) {
 				tag = tlv.readTag();
 				final short tlen = tlv.tagLength();
@@ -1499,7 +1515,7 @@ public class PivApplet extends Applet
 					tlv.end();
 					break;
 				case (byte)0xaa:
-					if (tlv.tagLength() != 1) {
+					if (tlen != 1) {
 						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);
@@ -1534,7 +1550,7 @@ public class PivApplet extends Applet
 					}
 					break;
 				case (byte)0xab:
-					if (tlv.tagLength() != 1) {
+					if (tlen != 1) {
 						tlv.abort();
 						ISOException.throwIt(
 						    ISO7816.SW_WRONG_DATA);

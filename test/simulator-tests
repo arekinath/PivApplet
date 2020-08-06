@@ -365,7 +365,22 @@ class TestPivyBasic < Minitest::Test
 		assert(@cert.verify(@key.public_key))
 	end
 
-	def test_06_reset_admin
+	def test_06_import_ec
+		@key = OpenSSL::PKey::EC.generate('prime256v1')
+		f = File.new("#{TestDir}/testkey2.pem", 'w')
+		f.write(@key.to_pem)
+		f.close()
+
+		out = `pivy-tool -g #{$guid} -P #{DefaultPin} import 82 < #{TestDir}/testkey2.pem`
+		assert_equal(0, $?)
+
+		out = `pivy-tool -g #{$guid} cert 82`
+		assert_equal(0, $?)
+		@cert = OpenSSL::X509::Certificate.new(out)
+		assert(@cert.verify(@key))
+	end
+
+	def test_07_reset_admin
 		# pivy-tool set-admin doesn't yet get the pinfo admin key in
 		# 0.5.0 :( change this after next ver?
 		out = ykpivtool(:verify_pin, :read_object, '--id 0x5FC109')
