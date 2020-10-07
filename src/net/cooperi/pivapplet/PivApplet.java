@@ -883,7 +883,15 @@ public class PivApplet extends Applet
 		}
 #endif*/
 //#endif
-		wtlv.writeTagRealLen((byte)0x06, (short)0);
+		/*
+		 * SP 800-83-4 part 2, 3.1 says: "Its value is set to 0x00"
+		 * regarding this 0x06 tag. Previous PivApplet releases
+		 * interpreted this as an empty 0x06 tag with no contents
+		 * (length = 0), but it seems more logical that it should
+		 * contain a single zero byte.
+		 */
+		wtlv.writeTagRealLen((byte)0x06, (short)1);
+		wtlv.writeByte((byte)0x00);
 
 		wtlv.pop();
 
