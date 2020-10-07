@@ -23,6 +23,7 @@ What works:
     - JC 2.2.2 builds have a hash-on-card workaround (see below), but this is
       not standard PIV
  * PINs and change of PIN, PUK reset
+ * Support for both 3DES and AES card administration keys
  * Most https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html[
    YubiKeyPIV-compatible extensions] are implemented and working:
     - PIN policy
@@ -105,6 +106,10 @@ Default card administration (`9B`) key:: `01 02 03 04 05 06 07 08 01 02 03 04 05
 (This is the default used by Yubikeys, so that the `yubico-piv-tool` will
 work with PivApplet.)
 
+Note that if 3DES admin key support is disabled, the default card
+administration key will be AES-128 instead (with the first 16 bytes of the
+default 3DES key as its value).
+
 ## ECDSA hash-on-card extension
 
 When built for JavaCard 2.2.2, this applet supports an extension for doing ECDSA
@@ -173,6 +178,8 @@ the feature flags in `build.xml` before running `ant`.
 Currently available feature flags:
 
 |===
+|`PIV_SUPPORT_3DES`       | `D` | Enable support for 3DES admin keys
+|`PIV_SUPPORT_AES`        | `a` | Enable support for AES admin keys
 |`PIV_SUPPORT_RSA`        | `R` | Enable RSA support
 |`PIV_SUPPORT_EC`         | `E` | Enable ECDSA and ECDH support
 |`PIV_SUPPORT_ECCP384`    | `e` | Enable P-384 support with ECDSA/ECDH
@@ -186,12 +193,12 @@ Currently available feature flags:
 Tested card configurations:
 
 |===
-|NXP J3H145        | JC3.0.4      | `REePSAx`
+|NXP J3H145        | JC3.0.4      | `REePSAx`, `REePSAxaD`
 |NXP J3D081        | JC2.2.2      | `RESAx`
 |NXP J2A040        | JC2.2.2      | `RESAx`
 |JC30M48CR         | JC3.0.4      | `ESPxL`, `RSxL`
 |ACOSJ 40k D1      | JC3.0.4      | `REePSA`
-|G&D StarSign CUT  | JC3.0.4      | `REePSAx`
+|G&D StarSign CUT  | JC3.0.4      | `REePSAx`, `REePSAxaD`
 |===
 
 As of v0.8.0, the builds on the releases page are labelled with these same

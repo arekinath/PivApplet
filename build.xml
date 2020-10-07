@@ -7,41 +7,50 @@
   <!--
     PIV_SUPPORT_*: choose whether RSA/EC family algorithms are supported.
   -->
-  <property name="PIV_SUPPORT_RSA" value="true" />
-  <property name="PIV_SUPPORT_EC" value="true" />
+  <property name="PIV_SUPPORT_RSA" value="true"/>
+  <property name="PIV_SUPPORT_EC" value="true"/>
 
   <!--
     PIV_SUPPORT_ECCP384: specifically allows disabling P-384 EC support since
     instantiating the 384-bit EC signer (even without ever using it) on some
     cards brings the applet too close to exhausting transient memory.
   -->
-  <property name="PIV_SUPPORT_ECCP384" value="true" />
+  <property name="PIV_SUPPORT_ECCP384" value="true"/>
+
+  <!--
+    PIV_SUPPORT_AES/3DES: allows disabling either of the two symmetric key
+    algorithms allowed to be used for the "admin"/"management" key in slot 9B.
+
+    Note that disabling 3DES will make the applet non-compliant with SP800.73-4
+  -->
+  <property name="PIV_SUPPORT_AES" value="true"/>
+  <property name="PIV_SUPPORT_3DES" value="true"/>
 
   <!--
     PIV_USE_EC_PRECOMPHASH: build with support for using signPreComputedHash()
     for EC signing. This can only work with JC3.0.5, but will build an applet
     that is capable of PIV standards-compliant EC signing.
   -->
-  <property name="PIV_USE_EC_PRECOMPHASH" value="true" />
+  <property name="PIV_USE_EC_PRECOMPHASH" value="true"/>
 
   <!--
     PIV_STRICT_CONTACTLESS: if true, strictly enforce the PIV spec requirements
     around which slots and keys are allowed to be used over the contactless
     interface. If false, allow anything to be used over contactless.
   -->
-  <property name="PIV_STRICT_CONTACTLESS" value="true" />
+  <property name="PIV_STRICT_CONTACTLESS" value="true"/>
   <!--
     YKPIV_ATTESTATION: whether to build support for YubicoPIV attestation.
     Without this, the attestation slots and commands will all return
     unsupported errors.
   -->
-  <property name="YKPIV_ATTESTATION" value="true" />
+  <property name="YKPIV_ATTESTATION" value="true"/>
   <!--
     APPLET_EXTLEN: build with support for extended length APDUs. This doesn't
     work properly on all cards and some may need to use an applet built without
     support for this (due to bugs in getOffsetCdata()).
   -->
-  <property name="APPLET_EXTLEN" value="true" />
+  <property name="APPLET_EXTLEN" value="true"/>
   <!--
     APPLET_USE_RESET_MEM: use CLEAR_ON_RESET memory in cipher and signature
     instances (rather than CLEAR_ON_DESELECT). Only set this if you trust other
@@ -49,19 +58,19 @@
     PivApplet is the only applet installed). Some cards are very short on
     CLEAR_ON_DESELECT memory and need this to use RSA.
   -->
-  <property name="APPLET_USE_RESET_MEM" value="false" />
+  <property name="APPLET_USE_RESET_MEM" value="false"/>
   <!--
     APPLET_LOW_TRANSIENT: conserve transient memory by falling back more
     quickly to buffering long data in permanent memory and allowing fewer
     memory segments in SGLists. This may break YKPIV_ATTESTATION. Recommended
     on some cards which are short on transient memory.
   -->
-  <property name="APPLET_LOW_TRANSIENT" value="false" />
+  <property name="APPLET_LOW_TRANSIENT" value="false"/>
 
   <target name="preprocess" description="proprocess java source">
-    <taskdef resource="jpp.xml" classpath="ext/jpp-1.0.3.jar" />
+    <taskdef resource="jpp.xml" classpath="ext/jpp-1.0.3.jar"/>
     <jpp destdir="src-gen" readonly="true" verbose="false">
-      <fileset dir="src/" includes="**/*.java" />
+      <fileset dir="src/" includes="**/*.java"/>
     </jpp>
   </target>
 

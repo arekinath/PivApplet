@@ -18,6 +18,7 @@ import javacard.framework.SystemException;
 import javacard.framework.Util;
 import javacard.security.CryptoException;
 import javacard.security.DESKey;
+import javacard.security.AESKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.ECPublicKey;
 import javacard.security.KeyAgreement;
@@ -76,6 +77,12 @@ public class PivApplet extends Applet
 //#endif
 //#if APPLET_USE_RESET_MEM
 	    'r',
+//#endif
+//#if PIV_SUPPORT_AES
+	    'a',
+//#endif
+//#if PIV_SUPPORT_3DES
+	    'D',
 //#endif
 	};
 
@@ -181,6 +188,7 @@ public class PivApplet extends Applet
 
 	private RandomData randData = null;
 	private Cipher tripleDes = null;
+	private Cipher aes = null;
 	private Cipher rsaPkcs1 = null;
 	private Signature ecdsaSha = null;
 	private Signature ecdsaSha256 = null;
@@ -272,7 +280,13 @@ public class PivApplet extends Applet
 	PivApplet()
 	{
 		randData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+//#if PIV_SUPPORT_3DES
 		tripleDes = Cipher.getInstance(Cipher.ALG_DES_CBC_NOPAD, false);
+//#endif
+//#if PIV_SUPPORT_AES
+		aes = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD,
+		    false);
+//#endif
 
 //#if PIV_SUPPORT_RSA
 		rsaPkcs1 = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, useResetMem);
@@ -407,11 +421,19 @@ public class PivApplet extends Applet
 		wtlv = new TlvWriter(bufmgr);
 
 		/* Initialize the admin key */
-		DESKey dk = (DESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_DES,
-		    KeyBuilder.LENGTH_DES3_3KEY, false);
+//#if PIV_SUPPORT_3DES
+		final DESKey dk = (DESKey)KeyBuilder.buildKey(
+		    KeyBuilder.TYPE_DES, KeyBuilder.LENGTH_DES3_3KEY, false);
 		slots[SLOT_9B].sym = dk;
 		dk.setKey(DEFAULT_ADMIN_KEY, (short)0);
 		slots[SLOT_9B].symAlg = PIV_ALG_3DES;
+/*#else
+		final AESKey ak = (AESKey)KeyBuilder.buildKey(
+		    KeyBuilder.TYPE_AES, KeyBuilder.LENGTH_AES_128, false);
+		slots[SLOT_9B].sym = ak;
+		ak.setKey(DEFAULT_ADMIN_KEY, (short)0);
+		slots[SLOT_9B].symAlg = PIV_ALG_AES128;
+#endif*/
 		/*
 		 * Allow the admin key to be "used" (for auth) without a
 		 * PIN VERIFY command first.
@@ -844,8 +866,18 @@ public class PivApplet extends Applet
 		wtlv.write(APP_URI, (short)0, (short)APP_URI.length);
 
 		wtlv.push((byte)0xAC);
+//#if PIV_SUPPORT_3DES
 		wtlv.writeTagRealLen((byte)0x80, (short)1);
 		wtlv.writeByte(PIV_ALG_3DES);
+//#endif
+//#if PIV_SUPPORT_AES
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
+		wtlv.writeByte(PIV_ALG_AES128);
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
+		wtlv.writeByte(PIV_ALG_AES192);
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
+		wtlv.writeByte(PIV_ALG_AES256);
+//#endif
 //#if PIV_SUPPORT_RSA
 		wtlv.writeTagRealLen((byte)0x80, (short)1);
 		wtlv.writeByte(PIV_ALG_RSA1024);
@@ -1627,7 +1659,7 @@ public class PivApplet extends Applet
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			return;
 		}
-		if (lc != 27) {
+		if (lc < 4) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
@@ -1640,23 +1672,91 @@ public class PivApplet extends Applet
 		final byte alg = buffer[off++];
 		final byte key = buffer[off++];
 		final byte keyLen = buffer[off++];
+		final short bitLen = (short)(keyLen << 3);
 
-		if (alg != PIV_ALG_3DES || key != (byte)0x9b ||
-		    keyLen != (byte)24) {
+		final byte wantLen = (byte)(keyLen + 3);
+		if (lc < wantLen) {
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
 
-		final DESKey dk = (DESKey)slots[SLOT_9B].sym;
-		dk.setKey(buffer, off);
+		if (key != (byte)0x9b) {
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		switch (alg) {
+//#if PIV_SUPPORT_3DES
+		case PIV_ALG_3DES:
+			if (bitLen != KeyBuilder.LENGTH_DES3_3KEY) {
+				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+				return;
+			}
+			final DESKey dk;
+			if (slots[SLOT_9B].symAlg != alg) {
+				dk = (DESKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_DES, bitLen, false);
+				slots[SLOT_9B].sym = dk;
+			} else {
+				dk = (DESKey)slots[SLOT_9B].sym;
+			}
+			slots[SLOT_9B].symAlg = alg;
+			dk.setKey(buffer, off);
+			break;
+//#endif
+//#if PIV_SUPPORT_AES
+		case PIV_ALG_AES128:
+		case PIV_ALG_AES192:
+		case PIV_ALG_AES256:
+			switch (alg) {
+			case PIV_ALG_AES128:
+				if (bitLen != KeyBuilder.LENGTH_AES_128) {
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				break;
+			case PIV_ALG_AES192:
+				if (bitLen != KeyBuilder.LENGTH_AES_192) {
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				break;
+			case PIV_ALG_AES256:
+				if (bitLen != KeyBuilder.LENGTH_AES_256) {
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
+				break;
+			}
+
+			final AESKey ak;
+			if (slots[SLOT_9B].symAlg != alg) {
+				ak = (AESKey)KeyBuilder.buildKey(
+				    KeyBuilder.TYPE_AES, bitLen, false);
+				slots[SLOT_9B].sym = ak;
+			} else {
+				ak = (AESKey)slots[SLOT_9B].sym;
+			}
+			slots[SLOT_9B].symAlg = alg;
+			ak.setKey(buffer, off);
+			break;
+//#endif
+		default:
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
 	}
 
 	private void
 	processGenAuthSym(final APDU apdu, final PivSlot slot,
 	    byte alg, final byte key, final Readable input,
-	    byte wanted, byte tag)
+	    byte wanted, byte tag, boolean hasChal, boolean hasWitness,
+	    boolean hasResp)
 	{
-		final Cipher ci = tripleDes;
+		final Cipher ci;
 		final short len;
 		short cLen;
 
@@ -1667,14 +1767,59 @@ public class PivApplet extends Applet
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
 			return;
 		}
-		if (alg == PIV_ALG_AES128)
-			len = (short)16;
-		else
+		switch (alg) {
+//#if PIV_SUPPORT_3DES
+		case PIV_ALG_3DES:
+			ci = tripleDes;
 			len = (short)8;
+			break;
+//#endif
+//#if PIV_SUPPORT_AES
+		case PIV_ALG_AES128:
+		case PIV_ALG_AES192:
+		case PIV_ALG_AES256:
+			ci = aes;
+			len = (short)16;
+			break;
+//#endif
+		default:
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			return;
+		}
 
-		if (wanted == (byte)0) {
+		if (hasWitness || hasResp) {
 			byte comp = -1;
-			if (tag == GA_TAG_RESPONSE) {
+			if (hasWitness) {
+				tlv.rewind();
+				tlv.readTag(); /* The 0x7C outer tag */
+
+				while (!tlv.atEnd()) {
+					tag = tlv.readTag();
+					if (tag == GA_TAG_WITNESS)
+						break;
+					tlv.skip();
+				}
+
+				if (tlv.tagLength() == len) {
+					tlv.read(tempBuf, len);
+					comp = Util.arrayCompare(tempBuf.data(),
+					    tempBuf.rpos(), challenge,
+					    (short)0, len);
+					tlv.end();
+				}
+			}
+			if (hasResp) {
+				tlv.rewind();
+				tlv.readTag(); /* The 0x7C outer tag */
+
+				while (!tlv.atEnd()) {
+					tag = tlv.readTag();
+					if (tag == GA_TAG_RESPONSE)
+						break;
+					tlv.skip();
+				}
+
 				ci.init(slot.sym, Cipher.MODE_DECRYPT, iv,
 				    (short)0, len);
 				tlv.read(tempBuf, len);
@@ -1693,20 +1838,6 @@ public class PivApplet extends Applet
 					    (short)0, cLen);
 					tlv.end();
 				}
-
-			} else if (tag == GA_TAG_WITNESS) {
-				if (tlv.tagLength() == len) {
-					tlv.read(tempBuf, len);
-					comp = Util.arrayCompare(tempBuf.data(),
-					    tempBuf.rpos(), challenge,
-					    (short)0, len);
-					tlv.end();
-				}
-
-			} else {
-				tlv.abort();
-				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-				return;
 			}
 
 			if (comp == 0) {
@@ -1717,15 +1848,12 @@ public class PivApplet extends Applet
 				return;
 			}
 
-			if (tlv.atEnd()) {
+			if (wanted == (byte)0) {
 				tlv.end();
 				tlv.finish();
 				ISOException.throwIt(ISO7816.SW_NO_ERROR);
 				return;
 			}
-			tag = tlv.readTag();
-			if (tag == GA_TAG_CHALLENGE)
-				wanted = GA_TAG_RESPONSE;
 		}
 
 		switch (wanted) {
@@ -1782,11 +1910,22 @@ public class PivApplet extends Applet
 			break;
 
 		case GA_TAG_RESPONSE:
-			if (tag != GA_TAG_CHALLENGE) {
+			if (!hasChal) {
 				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 				return;
 			}
+
+			tlv.rewind();
+			tlv.readTag(); /* The 0x7C outer tag */
+
+			while (!tlv.atEnd()) {
+				tag = tlv.readTag();
+				if (tag == GA_TAG_CHALLENGE)
+					break;
+				tlv.skip();
+			}
+
 			final short sLen = tlv.tagLength();
 			tlv.read(tempBuf, sLen);
 			tlv.end();
@@ -1841,11 +1980,6 @@ public class PivApplet extends Applet
 			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
 			return;
 		}
-		if (wanted != GA_TAG_RESPONSE || tag != GA_TAG_CHALLENGE) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
-		}
 		final short sLen = tlv.tagLength();
 		cLen = sLen;
 		switch (alg) {
@@ -1895,12 +2029,6 @@ public class PivApplet extends Applet
 		if (slot.asymAlg != alg || slot.asym == null) {
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
-
-		if (wanted != GA_TAG_RESPONSE) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
 		}
 
@@ -2072,12 +2200,6 @@ public class PivApplet extends Applet
 			return;
 		}
 
-		if (wanted != GA_TAG_RESPONSE) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
-		}
-
 		/* Are they asking for ECDH? */
 		if (tag == GA_TAG_EXP) {
 			final KeyAgreement ag = ecdhSha;
@@ -2155,9 +2277,10 @@ public class PivApplet extends Applet
 	{
 		final byte[] buffer = apdu.getBuffer();
 		final byte key;
-		byte alg, tag, wanted = 0;
+		byte alg, tag = 0, wanted = 0;
 		final PivSlot slot;
 		final Readable input;
+		boolean hasWitness = false, hasResp = false, hasChal = false;
 
 		alg = buffer[ISO7816.OFFSET_P1];
 		key = buffer[ISO7816.OFFSET_P2];
@@ -2212,30 +2335,70 @@ public class PivApplet extends Applet
 		while (!tlv.atEnd()) {
 			tag = tlv.readTag();
 			if (tlv.tagLength() == 0) {
+				/* There can only be one empty tag. */
+				if (wanted != 0) {
+					tlv.abort();
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
 				wanted = tag;
-				break;
 			}
 			tlv.skip();
 		}
 
-		/* Now rewind, let's figure out what to do */
+		/* Now rewind, let's figure out what fields they gave us. */
 		tlv.rewind();
 		tlv.readTag(); /* The 0x7C outer tag */
 
-		tag = tlv.readTag();
-		if (tag == wanted) {
-			tlv.skip();
-			if (!tlv.atEnd())
-				tag = tlv.readTag();
+		while (!tlv.atEnd()) {
+			tag = tlv.readTag();
+			if (tag == wanted) {
+				tlv.skip();
+				continue;
+			}
+			if (tag == GA_TAG_WITNESS) {
+				hasWitness = true;
+				tlv.skip();
+				continue;
+			}
+			if (tag == GA_TAG_RESPONSE) {
+				hasResp = true;
+				tlv.skip();
+				continue;
+			}
+			if (tag == GA_TAG_CHALLENGE || tag == GA_TAG_EXP) {
+				hasChal = true;
+				break;
+			}
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
 		}
 
 		switch (alg) {
 		case PIV_ALG_DEFAULT:
 		case PIV_ALG_3DES:
 		case PIV_ALG_AES128:
+		case PIV_ALG_AES192:
+		case PIV_ALG_AES256:
 			processGenAuthSym(apdu, slot, alg, key, input,
-			    wanted, tag);
-			break;
+			    wanted, tag, hasChal, hasWitness, hasResp);
+			return;
+		}
+
+		/*
+		 * All asymmetric algos are only allowed a challenge
+		 * and response.
+		 */
+		if (!(hasChal && !hasResp && !hasWitness) ||
+		    wanted != GA_TAG_RESPONSE) {
+			tlv.abort();
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		switch (alg) {
 //#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:

@@ -3,7 +3,7 @@
 require 'nokogiri'
 require 'fileutils'
 
-VER = "0.8.1"
+VER = "0.9.0"
 
 FLAGS = {
 	'R' => 'PIV_SUPPORT_RSA',
@@ -13,7 +13,9 @@ FLAGS = {
 	'S' => 'PIV_STRICT_CONTACTLESS',
 	'A' => 'YKPIV_ATTESTATION',
 	'x' => 'APPLET_EXTLEN',
-	'L' => 'APPLET_LOW_TRANSIENT'
+	'L' => 'APPLET_LOW_TRANSIENT',
+	'a' => 'PIV_SUPPORT_AES',
+	'D' => 'PIV_SUPPORT_3DES'
 }
 
 $xmlbase = Nokogiri::XML(File.open('build.xml'))
@@ -44,15 +46,18 @@ end
 
 `rm -fr dist`
 `mkdir dist`
-build(VER, 'jc221', 'RES')
-build(VER, 'jc221', 'RESA')
-build(VER, 'jc221', 'RESL')
+build(VER, 'jc221', 'RESaD')
+build(VER, 'jc221', 'RESAaD')
+build(VER, 'jc221', 'RESLaD')
+build(VER, 'jc221', 'RESLD')
 
-build(VER, 'jc222', 'RESA')
-build(VER, 'jc222', 'RESAx')
-build(VER, 'jc222', 'RESxL')
+build(VER, 'jc222', 'RESAaD')
+build(VER, 'jc222', 'RESAxaD')
+build(VER, 'jc222', 'RESxLD')
 
-build(VER, 'jc304', 'EPSxL')
-build(VER, 'jc304', 'RSxL')
-build(VER, 'jc304', 'REePSA')
-build(VER, 'jc304', 'REePSAx')
+build(VER, 'jc304', 'EPSxLaD')
+build(VER, 'jc304', 'RSxLaD')
+build(VER, 'jc304', 'REePSAa')
+build(VER, 'jc304', 'REePSAaD')
+build(VER, 'jc304', 'REePSAxa')
+build(VER, 'jc304', 'REePSAxaD')
