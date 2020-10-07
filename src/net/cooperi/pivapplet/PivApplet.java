@@ -1788,6 +1788,16 @@ public class PivApplet extends Applet
 			return;
 		}
 
+		/*
+		* yubico-piv-tool likes to send general auth sometimes
+		* without any empty tag, while expecting a response.
+		* SP 800-73-4 doesn't seem 100% clear on whether this should
+		* work or not, but we'll special-case it.
+		*/
+		if (wanted == (byte)0 && hasChal) {
+			wanted = GA_TAG_RESPONSE;
+		}
+
 		if (hasWitness || hasResp) {
 			byte comp = -1;
 			if (hasWitness) {
@@ -1807,6 +1817,11 @@ public class PivApplet extends Applet
 					    tempBuf.rpos(), challenge,
 					    (short)0, len);
 					tlv.end();
+				} else {
+					tlv.abort();
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
 				}
 			}
 			if (hasResp) {
@@ -1832,12 +1847,16 @@ public class PivApplet extends Applet
 				    len, outBuf.data(), outBuf.wpos());
 				outBuf.write(cLen);
 
-				if (tlv.tagLength() == 0) {
-					comp = Util.arrayCompare(outBuf.data(),
-					    outBuf.rpos(), challenge,
-					    (short)0, cLen);
-					tlv.end();
+				if (tlv.tagLength() != 0) {
+					tlv.abort();
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
 				}
+				comp = Util.arrayCompare(outBuf.data(),
+				    outBuf.rpos(), challenge,
+				    (short)0, cLen);
+				tlv.end();
 			}
 
 			if (comp == 0) {
@@ -1849,8 +1868,7 @@ public class PivApplet extends Applet
 			}
 
 			if (wanted == (byte)0) {
-				tlv.end();
-				tlv.finish();
+				tlv.abort();
 				ISOException.throwIt(ISO7816.SW_NO_ERROR);
 				return;
 			}
