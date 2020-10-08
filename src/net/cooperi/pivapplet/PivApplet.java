@@ -1934,6 +1934,13 @@ public class PivApplet extends Applet
 				return;
 			}
 
+			if (!slot.flags[PivSlot.F_UNLOCKED]) {
+				tlv.abort();
+				ISOException.throwIt(
+				    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				return;
+			}
+
 			tlv.rewind();
 			tlv.readTag(); /* The 0x7C outer tag */
 
