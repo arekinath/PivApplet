@@ -167,6 +167,7 @@ public class PivApplet extends Applet
 	private short outgoingLe = 0;
 
 	private byte[] challenge = null;
+	private boolean[] chalValid = null;
 	private byte[] iv = null;
 	private byte[] certSerial = null;
 
@@ -377,6 +378,8 @@ public class PivApplet extends Applet
 //#endif
 
 		challenge = JCSystem.makeTransientByteArray((short)16,
+		    JCSystem.CLEAR_ON_DESELECT);
+		chalValid = JCSystem.makeTransientBooleanArray((short)1,
 		    JCSystem.CLEAR_ON_DESELECT);
 		iv = JCSystem.makeTransientByteArray((short)16,
 		    JCSystem.CLEAR_ON_DESELECT);
@@ -1811,11 +1814,12 @@ public class PivApplet extends Applet
 					tlv.skip();
 				}
 
-				if (tlv.tagLength() == len) {
+				if (tlv.tagLength() == len && chalValid[0]) {
 					tlv.read(tempBuf, len);
 					comp = Util.arrayCompare(tempBuf.data(),
 					    tempBuf.rpos(), challenge,
 					    (short)0, len);
+					chalValid[0] = false;
 					tlv.end();
 				} else {
 					tlv.abort();
@@ -1824,7 +1828,7 @@ public class PivApplet extends Applet
 					return;
 				}
 			}
-			if (hasResp) {
+			if (hasResp && chalValid[0]) {
 				tlv.rewind();
 				tlv.readTag(); /* The 0x7C outer tag */
 
@@ -1857,6 +1861,7 @@ public class PivApplet extends Applet
 				    outBuf.rpos(), challenge,
 				    (short)0, cLen);
 				tlv.end();
+				chalValid[0] = false;
 			}
 
 			if (comp == 0) {
@@ -1886,6 +1891,7 @@ public class PivApplet extends Applet
 			wtlv.useApdu((short)0, outgoingLe);
 
 			randData.generateData(challenge, (short)0, len);
+			chalValid[0] = true;
 			/*for (byte i = 0; i < (byte)len; ++i)
 				challenge[i] = (byte)(i + 1);*/
 
@@ -1908,6 +1914,7 @@ public class PivApplet extends Applet
 			wtlv.useApdu((short)0, outgoingLe);
 
 			randData.generateData(challenge, (short)0, len);
+			chalValid[0] = true;
 			/*for (byte i = 0; i < (byte)len; ++i)
 				challenge[i] = (byte)(i + 1);*/
 
@@ -2355,7 +2362,8 @@ public class PivApplet extends Applet
 
 		/*
 		 * First, scan through the TLVs to figure out what the host
-		 * actually wants from us.
+		 * actually wants from us, and mark which fields they gave us
+		 * data for.
 		 */
 		while (!tlv.atEnd()) {
 			tag = tlv.readTag();
@@ -2367,38 +2375,38 @@ public class PivApplet extends Applet
 					    ISO7816.SW_WRONG_DATA);
 					return;
 				}
+				switch (tag) {
+				case GA_TAG_WITNESS:
+				case GA_TAG_RESPONSE:
+				case GA_TAG_CHALLENGE:
+					break;
+				default:
+					tlv.abort();
+					ISOException.throwIt(
+						ISO7816.SW_WRONG_DATA);
+					return;
+				}
 				wanted = tag;
+			} else {
+				switch (tag) {
+				case GA_TAG_WITNESS:
+					hasWitness = true;
+					break;
+				case GA_TAG_RESPONSE:
+					hasResp = true;
+					break;
+				case GA_TAG_CHALLENGE:
+				case GA_TAG_EXP:
+					hasChal = true;
+					break;
+				default:
+					tlv.abort();
+					ISOException.throwIt(
+					    ISO7816.SW_WRONG_DATA);
+					return;
+				}
 			}
 			tlv.skip();
-		}
-
-		/* Now rewind, let's figure out what fields they gave us. */
-		tlv.rewind();
-		tlv.readTag(); /* The 0x7C outer tag */
-
-		while (!tlv.atEnd()) {
-			tag = tlv.readTag();
-			if (tag == wanted) {
-				tlv.skip();
-				continue;
-			}
-			if (tag == GA_TAG_WITNESS) {
-				hasWitness = true;
-				tlv.skip();
-				continue;
-			}
-			if (tag == GA_TAG_RESPONSE) {
-				hasResp = true;
-				tlv.skip();
-				continue;
-			}
-			if (tag == GA_TAG_CHALLENGE || tag == GA_TAG_EXP) {
-				hasChal = true;
-				break;
-			}
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
 		}
 
 		switch (alg) {
@@ -2421,6 +2429,18 @@ public class PivApplet extends Applet
 			tlv.abort();
 			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 			return;
+		}
+
+		/* Read through to the first non-wanted tag. */
+		tlv.rewind();
+		tlv.readTag();		/* Outer 0x7C tag */
+		while (!tlv.atEnd()) {
+			tag = tlv.readTag();
+			if (tag == wanted) {
+				tlv.skip();
+				continue;
+			}
+			break;
 		}
 
 		switch (alg) {
