@@ -87,7 +87,6 @@ public class PivApplet extends Applet
 	};
 
 	private static final byte[] APP_URI = {
-	    'h', 't', 't', 'p', 's', ':', '/', '/',
 	    'g', 'i', 't', 'h', 'u', 'b', '.', 'c', 'o', 'm', '/',
 	    'a', 'r', 'e', 'k', 'i', 'n', 'a', 't', 'h', '/',
 	    'P', 'i', 'v', 'A', 'p', 'p', 'l', 'e', 't'
@@ -845,6 +844,24 @@ public class PivApplet extends Applet
 	}
 
 	private void
+	pushAlgorithm(byte algid)
+	{
+		wtlv.push((byte)0xAC);
+		wtlv.writeTagRealLen((byte)0x80, (short)1);
+		wtlv.writeByte(algid);
+		/*
+		 * SP 800-83-4 part 2, 3.1 says: "Its value is set to 0x00"
+		 * regarding this 0x06 tag. Previous PivApplet releases
+		 * interpreted this as an empty 0x06 tag with no contents
+		 * (length = 0), but it seems more logical that it should
+		 * contain a single zero byte.
+		 */
+		wtlv.writeTagRealLen((byte)0x06, (short)1);
+		wtlv.writeByte((byte)0x00);
+		wtlv.pop();
+	}
+
+	private void
 	sendSelectResponse(APDU apdu)
 	{
 		outgoing.reset();
@@ -852,7 +869,7 @@ public class PivApplet extends Applet
 		outgoingLe = apdu.setOutgoing();
 		wtlv.useApdu((short)0, outgoingLe);
 
-		wtlv.push((byte)0x61);
+		wtlv.push256((byte)0x61);
 
 		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
 		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
@@ -868,67 +885,60 @@ public class PivApplet extends Applet
 		wtlv.writeTagRealLen((short)0x5F50, (short)APP_URI.length);
 		wtlv.write(APP_URI, (short)0, (short)APP_URI.length);
 
-		wtlv.push((byte)0xAC);
+		/*
+		 * Small spec divergence: PIV doesn't require us to list all
+		 * of the algorithms we support here in 'AC' '80' tags. We
+		 * do, though, so that client impls specifically aware of
+		 * PivApplet can work out which ones this build/card supports.
+		 *
+		 * Normally, this 'AC' tags would be expected to only contain
+		 * any supported PIV SM algorihtms. The specs allow multiple
+		 * 'AC' tags, however, and don't seem to explicitly outlaw
+		 * what we're doing.
+		 *
+		 * If we eventually support PIV SM, we should put the SM algos
+		 * first here so that client/middlware impls which stop at the
+		 * first 'AC' tag correctly find our SM algo.
+		 */
+
 //#if PIV_SUPPORT_3DES
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_3DES);
+		pushAlgorithm(PIV_ALG_3DES);
 //#endif
 //#if PIV_SUPPORT_AES
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_AES128);
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_AES192);
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_AES256);
+		/*
+		 * Just write AES256 to indicate AES support. No need to be
+		 * too verbose.
+		 */
+		pushAlgorithm(PIV_ALG_AES256);
 //#endif
 //#if PIV_SUPPORT_RSA
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_RSA1024);
-
-		wtlv.writeTagRealLen((byte)0x80, (short)1);
-		wtlv.writeByte(PIV_ALG_RSA2048);
+		/*
+		 * Similar to AES, just write RSA2048 if we support RSA. Let
+		 * RSA1024 support be implied.
+		 */
+		pushAlgorithm(PIV_ALG_RSA2048);
 //#endif
 //#if PIV_SUPPORT_EC
 		if (ecdsaSha != null || ecdsaSha256 != null) {
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP256);
+			pushAlgorithm(PIV_ALG_ECCP256);
 		}
 		if (ecdsaSha384 != null) {
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP384);
+			pushAlgorithm(PIV_ALG_ECCP384);
 		}
 /*#if !PIV_USE_EC_PRECOMPHASH
 		if (ecdsaSha != null) {
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP256_SHA1);
+			pushAlgorithm(PIV_ALG_ECCP256_SHA1);
 		}
 		if (ecdsaSha256 != null) {
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP256_SHA256);
+			pushAlgorithm(PIV_ALG_ECCP256_SHA256);
 		}
 		if (ecdsaSha384 != null) {
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP384_SHA1);
-
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP384_SHA256);
-
-			wtlv.writeTagRealLen((byte)0x80, (short)1);
-			wtlv.writeByte(PIV_ALG_ECCP384_SHA384);
+			pushAlgorithm(PIV_ALG_ECCP384_SHA1);
+			pushAlgorithm(PIV_ALG_ECCP384_SHA256);
+			pushAlgorithm(PIV_ALG_ECCP384_SHA384);
 		}
 #endif*/
 //#endif
-		/*
-		 * SP 800-83-4 part 2, 3.1 says: "Its value is set to 0x00"
-		 * regarding this 0x06 tag. Previous PivApplet releases
-		 * interpreted this as an empty 0x06 tag with no contents
-		 * (length = 0), but it seems more logical that it should
-		 * contain a single zero byte.
-		 */
-		wtlv.writeTagRealLen((byte)0x06, (short)1);
-		wtlv.writeByte((byte)0x00);
-
-		wtlv.pop();
 
 		wtlv.pop();
 		wtlv.end();
