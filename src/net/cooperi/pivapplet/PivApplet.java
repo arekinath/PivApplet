@@ -2795,6 +2795,17 @@ public class PivApplet extends Applet
 		randData.generateData(serial, (short)0, (short)4);
 		serial[0] |= (byte)0x80;
 
+		/*
+		 * These can be changed during generate or import, so reset
+		 * them to defaults.
+		 */
+		for (idx = 0; idx < MAX_SLOTS; ++idx) {
+			slots[idx].pinPolicy = PivSlot.P_ONCE;
+		}
+		slots[SLOT_9C].pinPolicy = PivSlot.P_ALWAYS;
+		slots[SLOT_9E].pinPolicy = PivSlot.P_NEVER;
+		slots[SLOT_9B].pinPolicy = PivSlot.P_NEVER;
+
 		initCARDCAP();
 		initCHUID();
 		initKEYHIST();
