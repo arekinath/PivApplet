@@ -874,9 +874,14 @@ public class PivApplet extends Applet
 		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
 		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
 
+		/*
+		 * The NIST demo cards only return the first 5 bytes of the AID
+		 * here (the NIST RID). The spec is not especially explicit
+		 * about it, but we'll go with that.
+		 */
 		wtlv.push((byte)0x79);
-		wtlv.writeTagRealLen((byte)0x4F, (short)PIV_AID.length);
-		wtlv.write(PIV_AID, (short)0, (short)PIV_AID.length);
+		wtlv.writeTagRealLen((byte)0x4F, (short)5);
+		wtlv.write(PIV_AID, (short)0, (short)5);
 		wtlv.pop();
 
 		wtlv.writeTagRealLen((byte)0x50, (short)APP_NAME.length);
