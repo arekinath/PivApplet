@@ -183,6 +183,7 @@ public class PivApplet extends Applet
 	private OwnerPIN pukPin = null;
 	private boolean pivPinIsDefault = true;
 	private boolean pukPinIsDefault = true;
+	private boolean mgmtKeyIsDefault = true;
 	private byte pinRetries;
 	private byte pukRetries;
 
@@ -435,6 +436,7 @@ public class PivApplet extends Applet
 		slots[SLOT_9B].sym = ak;
 		ak.setKey(DEFAULT_ADMIN_KEY, (short)0);
 		slots[SLOT_9B].symAlg = PIV_ALG_AES128;
+		mgmtKeyIsDefault = false;
 #endif*/
 		/*
 		 * Allow the admin key to be "used" (for auth) without a
@@ -730,6 +732,7 @@ public class PivApplet extends Applet
 		outgoingLe = apdu.setOutgoing();
 		wtlv.useApdu((short)0, outgoingLe);
 
+		// Tag 0x01, one byte, [algo]
 		if (slot.asym != null) {
 			wtlv.writeTagRealLen((byte)0x01, (short)1);
 			wtlv.writeByte(slot.asymAlg);
@@ -738,9 +741,19 @@ public class PivApplet extends Applet
 			wtlv.writeByte(slot.symAlg);
 		}
 
+		if (key == (byte)0x9B) {
+			// Tag 0x05, one byte, whether the management key is default
+			wtlv.writeTagRealLen((byte)0x05, (short)1);
+			if (mgmtKeyIsDefault)
+				wtlv.writeByte((byte)1);
+			else
+				wtlv.writeByte((byte)0);
+		}
+
+		// Tag 0x02, two bytes, PIN and touch policy (never)
 		wtlv.writeTagRealLen((byte)0x02, (short)2);
 		wtlv.writeByte(slot.pinPolicy);
-		wtlv.writeByte((byte)0);
+		wtlv.writeByte((byte)0x01);
 
 		wtlv.writeTagRealLen((byte)0x03, (short)1);
 		if (slot.imported)
@@ -1726,6 +1739,7 @@ public class PivApplet extends Applet
 			}
 			slots[SLOT_9B].symAlg = alg;
 			dk.setKey(buffer, off);
+			mgmtKeyIsDefault = false;
 			break;
 //#endif
 //#if PIV_SUPPORT_AES
@@ -1766,6 +1780,7 @@ public class PivApplet extends Applet
 			}
 			slots[SLOT_9B].symAlg = alg;
 			ak.setKey(buffer, off);
+			mgmtKeyIsDefault = false;
 			break;
 //#endif
 		default:
@@ -2784,9 +2799,11 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_3DES
 		final DESKey dk = (DESKey)slots[SLOT_9B].sym;
 		dk.setKey(DEFAULT_ADMIN_KEY, (short)0);
+		mgmtKeyIsDefault = true;
 //#else
 		final AESKey ak = (AESKey)slots[SLOT_9B].sym;
 		ak.setKey(DEFAULT_ADMIN_KEY, (short)0);
+		mgmtKeyIsDefault = false;
 //#endif
 
 		pinRetries = (byte)5;
