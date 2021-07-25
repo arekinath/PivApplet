@@ -3258,6 +3258,7 @@ public class PivApplet extends Applet
 	private static final byte ASN1_NULL = (byte)0x05;
 	private static final byte ASN1_OID = (byte)0x06;
 	private static final byte ASN1_UTF8STRING = (byte)0x0c;
+	private static final byte ASN1_UTCTIME = (byte)0x17;
 	private static final byte ASN1_GENTIME = (byte)0x18;
 	private static final byte ASN1_BITSTRING = (byte)0x03;
 	private static final byte ASN1_OCTETSTRING = (byte)0x04;
@@ -3312,7 +3313,7 @@ public class PivApplet extends Applet
 	};
 
 	private static final byte[] X509_NOTBEFORE = {
-	    '2', '0', '1', '8', '0', '1', '0', '1',
+	    '1', '8', '0', '1', '0', '1',
 	    '0', '0', '0', '0', '0', '0', 'Z'
 	};
 	private static final byte[] X509_NOTAFTER = {
@@ -3424,7 +3425,7 @@ public class PivApplet extends Applet
 
 		/* Validity */
 		wtlv.push(ASN1_SEQ);
-		wtlv.push(ASN1_GENTIME);
+		wtlv.push(ASN1_UTCTIME);
 		wtlv.write(X509_NOTBEFORE, (short)0,
 		    (short)X509_NOTBEFORE.length);
 		wtlv.pop();
