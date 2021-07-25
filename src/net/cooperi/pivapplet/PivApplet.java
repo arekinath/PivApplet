@@ -118,7 +118,7 @@ public class PivApplet extends Applet
 	};
 
 	private static final byte[] YKPIV_VERSION = {
-	    (byte)5, (byte)3, (byte)0
+	    (byte)5, (byte)4, (byte)0
 	};
 
 	/* Standard PIV commands we support. */
@@ -432,11 +432,10 @@ public class PivApplet extends Applet
 		slots[SLOT_9B].symAlg = PIV_ALG_3DES;
 /*#else
 		final AESKey ak = (AESKey)KeyBuilder.buildKey(
-		    KeyBuilder.TYPE_AES, KeyBuilder.LENGTH_AES_128, false);
+		    KeyBuilder.TYPE_AES, KeyBuilder.LENGTH_AES_192, false);
 		slots[SLOT_9B].sym = ak;
 		ak.setKey(DEFAULT_ADMIN_KEY, (short)0);
-		slots[SLOT_9B].symAlg = PIV_ALG_AES128;
-		mgmtKeyIsDefault = false;
+		slots[SLOT_9B].symAlg = PIV_ALG_AES192;
 #endif*/
 		/*
 		 * Allow the admin key to be "used" (for auth) without a
@@ -2799,12 +2798,11 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_3DES
 		final DESKey dk = (DESKey)slots[SLOT_9B].sym;
 		dk.setKey(DEFAULT_ADMIN_KEY, (short)0);
-		mgmtKeyIsDefault = true;
-//#else
+/*#else
 		final AESKey ak = (AESKey)slots[SLOT_9B].sym;
 		ak.setKey(DEFAULT_ADMIN_KEY, (short)0);
-		mgmtKeyIsDefault = false;
-//#endif
+#endif*/
+		mgmtKeyIsDefault = true;
 
 		pinRetries = (byte)5;
 		pivPin = new OwnerPIN(pinRetries, (byte)8);
