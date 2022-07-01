@@ -9,7 +9,6 @@ FLAGS = {
 	'R' => 'PIV_SUPPORT_RSA',
 	'E' => 'PIV_SUPPORT_EC',
 	'e' => 'PIV_SUPPORT_ECCP384',
-	'P' => 'PIV_USE_EC_PRECOMPHASH',
 	'S' => 'PIV_STRICT_CONTACTLESS',
 	'A' => 'YKPIV_ATTESTATION',
 	'x' => 'APPLET_EXTLEN',
@@ -46,20 +45,20 @@ end
 
 `rm -fr dist`
 `mkdir dist`
-build(VER, 'jc221', 'RESaD')
-build(VER, 'jc221', 'RESAaD')
-build(VER, 'jc221', 'RESLaD')
-build(VER, 'jc221', 'RESLD')
+build(VER, 'jc221', 'RSaD')
+build(VER, 'jc221', 'RSAaD')
+build(VER, 'jc221', 'RSLaD')
+build(VER, 'jc221', 'RSLD')
 
-build(VER, 'jc222', 'RESAaD')
-build(VER, 'jc222', 'RESAxaD')
-build(VER, 'jc222', 'REAxaD')
-build(VER, 'jc222', 'RESxLD')
+build(VER, 'jc222', 'RSAaD')
+build(VER, 'jc222', 'RSAxaD')
+build(VER, 'jc222', 'RAxaD')
+build(VER, 'jc222', 'RSxLD')
 
-build(VER, 'jc304', 'EPSxLaD')
+build(VER, 'jc304', 'ESxLaD')
 build(VER, 'jc304', 'RSxLaD')
-build(VER, 'jc304', 'REePSAa')
-build(VER, 'jc304', 'REePSAaD')
-build(VER, 'jc304', 'REePSAxa')
-build(VER, 'jc304', 'REePSAxaD')
-build(VER, 'jc304', 'REePAxaD')
+build(VER, 'jc304', 'REeSAa')
+build(VER, 'jc304', 'REeSAaD')
+build(VER, 'jc304', 'REeSAxa')
+build(VER, 'jc304', 'REeSAxaD')
+build(VER, 'jc304', 'REeAxaD')

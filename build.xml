@@ -27,18 +27,11 @@
   <property name="PIV_SUPPORT_3DES" value="true"/>
 
   <!--
-    PIV_USE_EC_PRECOMPHASH: build with support for using signPreComputedHash()
-    for EC signing. This can only work with JC3.0.5, but will build an applet
-    that is capable of PIV standards-compliant EC signing.
-  -->
-  <property name="PIV_USE_EC_PRECOMPHASH" value="true"/>
-
-  <!--
     PIV_STRICT_CONTACTLESS: if true, strictly enforce the PIV spec requirements
     around which slots and keys are allowed to be used over the contactless
     interface. If false, allow anything to be used over contactless.
   -->
-  <property name="PIV_STRICT_CONTACTLESS" value="true"/>
+  <property name="PIV_STRICT_CONTACTLESS" value="false"/>
   <!--
     YKPIV_ATTESTATION: whether to build support for YubicoPIV attestation.
     Without this, the attestation slots and commands will all return

@@ -60,9 +60,6 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_ECCP384
 	    'e',
 //#endif
-//#if PIV_USE_EC_PRECOMPHASH
-	    'P',
-//#endif
 //#if PIV_STRICT_CONTACTLESS
 	    'S',
 //#endif
@@ -225,12 +222,6 @@ public class PivApplet extends Applet
 	private static final byte PIV_ALG_AES256 = (byte)0x0C;
 	private static final byte PIV_ALG_ECCP256 = (byte)0x11;
 	private static final byte PIV_ALG_ECCP384 = (byte)0x14;
-
-	private static final byte PIV_ALG_ECCP256_SHA1 = (byte)0xf0;
-	private static final byte PIV_ALG_ECCP256_SHA256 = (byte)0xf1;
-	private static final byte PIV_ALG_ECCP384_SHA1 = (byte)0xf2;
-	private static final byte PIV_ALG_ECCP384_SHA256 = (byte)0xf3;
-	private static final byte PIV_ALG_ECCP384_SHA384 = (byte)0xf4;
 
 	private static final byte GA_TAG_WITNESS = (byte)0x80;
 	private static final byte GA_TAG_CHALLENGE = (byte)0x81;
@@ -948,19 +939,6 @@ public class PivApplet extends Applet
 		if (ecdsaSha384 != null) {
 			pushAlgorithm(PIV_ALG_ECCP384);
 		}
-/*#if !PIV_USE_EC_PRECOMPHASH
-		if (ecdsaSha != null) {
-			pushAlgorithm(PIV_ALG_ECCP256_SHA1);
-		}
-		if (ecdsaSha256 != null) {
-			pushAlgorithm(PIV_ALG_ECCP256_SHA256);
-		}
-		if (ecdsaSha384 != null) {
-			pushAlgorithm(PIV_ALG_ECCP384_SHA1);
-			pushAlgorithm(PIV_ALG_ECCP384_SHA256);
-			pushAlgorithm(PIV_ALG_ECCP384_SHA384);
-		}
-#endif*/
 //#endif
 
 		wtlv.pop();
@@ -2099,7 +2077,6 @@ public class PivApplet extends Applet
 			return;
 		}
 
-//#if PIV_USE_EC_PRECOMPHASH
 		/* Are they asking for ECDH? */
 		if (tag == GA_TAG_EXP) {
 			final KeyAgreement ag = ecdh;
@@ -2174,12 +2151,6 @@ public class PivApplet extends Applet
 
 		wtlv.end();
 		sendOutgoing(apdu);
-
-/*#else
-		tlv.abort();
-		ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-		return;
-#endif*/
 	}
 
 	private void
@@ -2205,125 +2176,6 @@ public class PivApplet extends Applet
 		outBuf.write(cLen);
 
 		incoming.reset();
-		outgoing.reset();
-		wtlv.start(outgoing);
-		outgoingLe = apdu.setOutgoing();
-		wtlv.useApdu((short)0, outgoingLe);
-
-		wtlv.writeTagRealLen((byte)0x7c,
-		    TlvWriter.sizeWithByteTag(cLen));
-		wtlv.writeTagRealLen(GA_TAG_RESPONSE, cLen);
-		wtlv.write(outBuf);
-
-		wtlv.end();
-		sendOutgoing(apdu);
-	}
-
-	private void
-	processGenAuthEcHash(final APDU apdu, final PivSlot slot,
-	    byte alg, final byte key, final Readable input,
-	    final byte wanted, final byte tag)
-	{
-		final byte baseAlg;
-		final Signature si;
-		short cLen;
-
-		switch (alg) {
-		case PIV_ALG_ECCP256_SHA1:
-			si = ecdsaSha;
-			baseAlg = PIV_ALG_ECCP256;
-			break;
-		case PIV_ALG_ECCP256_SHA256:
-			si = ecdsaSha256;
-			baseAlg = PIV_ALG_ECCP256;
-			break;
-		case PIV_ALG_ECCP384_SHA1:
-			si = ecdsaSha;
-			baseAlg = PIV_ALG_ECCP384;
-			break;
-		case PIV_ALG_ECCP384_SHA256:
-			si = ecdsaSha256;
-			baseAlg = PIV_ALG_ECCP384;
-			break;
-		case PIV_ALG_ECCP384_SHA384:
-			si = ecdsaSha384;
-			baseAlg = PIV_ALG_ECCP384;
-			break;
-		default:
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
-
-		if (slot.asymAlg != baseAlg || slot.asym == null) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-			return;
-		}
-
-		if (si == null) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-			return;
-		}
-
-		/* Are they asking for ECDH? */
-		if (tag == GA_TAG_EXP) {
-			final KeyAgreement ag = ecdhSha;
-			if (ag == null) {
-				tlv.abort();
-				ISOException.throwIt(
-				    ISO7816.SW_FUNC_NOT_SUPPORTED);
-				return;
-			}
-			if (alg != PIV_ALG_ECCP256_SHA1 &&
-			    alg != PIV_ALG_ECCP384_SHA1) {
-				tlv.abort();
-				ISOException.throwIt(
-				    ISO7816.SW_FUNC_NOT_SUPPORTED);
-				return;
-			}
-			processGenAuthEcdh(apdu, slot, ag);
-			return;
-		}
-
-		/* Otherwise they must be asking for a signature. */
-		if (tag != GA_TAG_CHALLENGE) {
-			tlv.abort();
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
-		}
-
-		final short sLen = tlv.tagLength();
-		cLen = sLen;
-		switch (baseAlg) {
-		case PIV_ALG_ECCP256:
-			cLen = (short)75;
-			break;
-		case PIV_ALG_ECCP384:
-			cLen = (short)107;
-			break;
-		}
-
-		if (!bufmgr.alloc(cLen, outBuf)) {
-			ISOException.throwIt(ISO7816.SW_FILE_FULL);
-			return;
-		}
-
-		si.init(slot.asym.getPrivate(), Signature.MODE_SIGN);
-		short done = (short)0;
-		while (done < sLen) {
-			final short read = tlv.readPartial(tempBuf, sLen);
-			si.update(tempBuf.data(), tempBuf.rpos(), read);
-			done += read;
-		}
-		tlv.end();
-		cLen = si.sign(null, (short)0, (short)0,
-		    outBuf.data(), outBuf.wpos());
-		outBuf.write(cLen);
-
-		incoming.resetAndFree();
-
 		outgoing.reset();
 		wtlv.start(outgoing);
 		outgoingLe = apdu.setOutgoing();
@@ -2490,14 +2342,6 @@ public class PivApplet extends Applet
 		case PIV_ALG_ECCP256:
 		case PIV_ALG_ECCP384:
 			processGenAuthEcPlain(apdu, slot, alg, key, input,
-			    wanted, tag);
-			break;
-		case PIV_ALG_ECCP256_SHA1:
-		case PIV_ALG_ECCP256_SHA256:
-		case PIV_ALG_ECCP384_SHA1:
-		case PIV_ALG_ECCP384_SHA256:
-		case PIV_ALG_ECCP384_SHA384:
-			processGenAuthEcHash(apdu, slot, alg, key, input,
 			    wanted, tag);
 			break;
 //#endif
