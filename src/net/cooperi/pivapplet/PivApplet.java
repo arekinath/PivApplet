@@ -2662,9 +2662,6 @@ public class PivApplet extends Applet
 		randData.generateData(cardId, (short)CARD_ID_FIXED.length,
 		    (short)(21 - (short)CARD_ID_FIXED.length));
 
-		randData.generateData(serial, (short)0, (short)4);
-		serial[0] |= (byte)0x80;
-
 		/*
 		 * These can be changed during generate or import, so reset
 		 * them to defaults.
