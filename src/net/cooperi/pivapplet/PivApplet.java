@@ -2864,8 +2864,7 @@ public class PivApplet extends Applet
 			tlv.end();
 			tlv.finish();
 
-			if (file == null || file.data == null ||
-			    file.len == 0) {
+			if (file == null) {
 				ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
 				return;
 			}
@@ -2885,6 +2884,11 @@ public class PivApplet extends Applet
 			if (policy == File.P_PIN && !pivPin.isValidated()) {
 				ISOException.throwIt(
 				    ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				return;
+			}
+
+			if (file.data == null || file.len == 0) {
+				ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
 				return;
 			}
 
