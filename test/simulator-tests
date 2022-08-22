@@ -10,6 +10,11 @@ TestDir = __dir__
 $pin = DefaultPin
 $guid = nil
 
+if Reader.nil?
+	STDERR.puts "requires reader name"
+	exit 1
+end
+
 def ykpivtool(*opts)
 	cmd = "yubico-piv-tool -r '#{Reader}'"
 	opts.each do |opt|
@@ -22,7 +27,7 @@ def ykpivtool(*opts)
 			cmd += " #{opt}"
 		end
 	end
-	`#{cmd} 2>/dev/null`
+	`#{cmd} 2>&1`
 end
 
 class TestYubicoBasic < Minitest::Test
@@ -62,7 +67,7 @@ class TestYubicoBasic < Minitest::Test
 
 	def test_05_selfsign
 		out = ykpivtool(:verify_pin, :selfsign_certificate,
-			'-s 9a', '-S "/CN=test"', "< #{TestDir}/pubkey-9a.pem")
+			'-s 9a', '-S "/CN=test/"', "< #{TestDir}/pubkey-9a.pem")
 		assert_equal(0, $?)
 		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
 
@@ -110,8 +115,8 @@ class TestYubicoAlgs < Minitest::Test
 
 	def test_02_selfsign_rsa1024
 		out = ykpivtool(:selfsign_certificate, '-s 9e',
-			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
-		assert_equal(0, $?)
+			'-S "/CN=test/"', "< #{TestDir}/pubkey-9e.pem")
+		assert_equal(0, $?, out)
 		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
 
 		cert = OpenSSL::X509::Certificate.new(out)
@@ -136,7 +141,7 @@ class TestYubicoAlgs < Minitest::Test
 
 	def test_04_selfsign_rsa2048
 		out = ykpivtool(:selfsign_certificate, '-s 9e',
-			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
+			'-S "/CN=test/"', "< #{TestDir}/pubkey-9e.pem")
 		assert_equal(0, $?)
 		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
 
@@ -162,7 +167,7 @@ class TestYubicoAlgs < Minitest::Test
 
 	def test_06_selfsign_eccp384
 		out = ykpivtool(:selfsign_certificate, '-s 9e',
-			'-S "/CN=test"', "< #{TestDir}/pubkey-9e.pem")
+			'-S "/CN=test/"', "< #{TestDir}/pubkey-9e.pem")
 		assert_equal(0, $?)
 		assert_match(/^-----BEGIN CERTIFICATE-----$/, out)
 
@@ -321,11 +326,11 @@ class TestPivyBasic < Minitest::Test
 		assert_equal(0, $?)
 		assert_match(/device: #{Reader}/, out)
 		assert_match(/applet: PivApplet v[0-9.]+/, out)
-		assert_match(/yubico: .* \(v5\.3\.0\)$/, out)
+		assert_match(/yubico: .* \(v5\.[0-9]+\.[0-9]+\)$/, out)
 	end
 
 	def test_02_set_admin
-		out = `pivy-tool -g #{$guid} set-admin random`
+		out = `pivy-tool -g #{$guid} -P #{DefaultPin} set-admin random`
 		assert_equal(0, $?)
 
 		ykpivtool(:generate, '-s 9e', '-A RSA1024')
@@ -388,7 +393,7 @@ class TestPivyBasic < Minitest::Test
 		assert(/^881a8918([0-9a-fA-F]+)$/.match(out))
 		@adminkey = $1
 
-		out = `pivy-tool -g #{$guid} -K #{@adminkey} set-admin default`
+		out = `pivy-tool -g #{$guid} -K #{@adminkey} -P #{DefaultPin} set-admin default`
 		assert_equal(0, $?)
 
 		ykpivtool(:generate, '-s 9e', '-A RSA1024')
