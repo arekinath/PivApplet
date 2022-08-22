@@ -780,7 +780,7 @@ public class PivApplet extends Applet
 			case PIV_ALG_ECCP384:
 				ECPublicKey epubk =
 				    (ECPublicKey)slot.asym.getPublic();
-				final short eclen = (short)(epubk.getSize() / 4);
+				final short eclen = (short)(epubk.getSize() / 2);
 
 				wtlv.push((byte)0x04, (short)(eclen + 4));
 				wtlv.push((byte)0x86, (short)(eclen + 1));
@@ -2358,6 +2358,7 @@ public class PivApplet extends Applet
 		final byte[] buffer = apdu.getBuffer();
 		short lc, pinOff, idx;
 		final OwnerPIN pin;
+		short sw = (short)0;
 
 		if (buffer[ISO7816.OFFSET_P1] != (byte)0x00 &&
 		    buffer[ISO7816.OFFSET_P1] != (byte)0xFF) {
@@ -2369,11 +2370,8 @@ public class PivApplet extends Applet
 		case (byte)0x80:
 			pin = pivPin;
 			break;
-		case (byte)0x81:
-			pin = pukPin;
-			break;
 		default:
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			ISOException.throwIt((short)0x6A88);
 			return;
 		}
 
@@ -2393,20 +2391,6 @@ public class PivApplet extends Applet
 		pinOff = ISO7816.OFFSET_CDATA;
 #endif*/
 
-		if (lc == 0 && pin.isValidated()) {
-			ISOException.throwIt(ISO7816.SW_NO_ERROR);
-			return;
-		} else if (lc == 0) {
-			ISOException.throwIt((short)(
-			    (short)0x63C0 | pin.getTriesRemaining()));
-			return;
-		}
-
-		if (lc != 8) {
-			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-			return;
-		}
-
 		/*
 		 * According to the PIV spec, if the PIN is blocked we should
 		 * return 0x6983 here (SW_FILE_INVALID).
@@ -2416,31 +2400,42 @@ public class PivApplet extends Applet
 			return;
 		}
 
-		if (!pin.check(buffer, pinOff, (byte)8)) {
-			if (pukPin.getTriesRemaining() == 0) {
-				for (idx = (short)0; idx < MAX_SLOTS; ++idx) {
-					final PivSlot slot = slots[idx];
-					if (slot == null)
-						continue;
-					if (slot.asym == null)
-						continue;
-					slot.asym.getPrivate().clearKey();
-				}
+		/* P1 = FF means "set security status to false" */
+		if (buffer[ISO7816.OFFSET_P1] == (byte)0xFF) {
+			if (pin.isValidated())
+				pin.reset();
+			syncSecurityStatus();
+			ISOException.throwIt(ISO7816.SW_NO_ERROR);
+			return;
+		}
+
+		if (lc == 0) {
+			/* P1 = 00 with Lc = 00 and no data: is PIN cached? */
+			if (pin.isValidated()) {
+				ISOException.throwIt(ISO7816.SW_NO_ERROR);
+				return;
+
+			} else {
+				ISOException.throwIt((short)(
+				    (short)0x63C0 | pin.getTriesRemaining()));
+				return;
 			}
+		}
+
+		if (lc != 8) {
+			ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+			return;
+		}
+
+		if (!pin.check(buffer, pinOff, (byte)8)) {
+			eraseKeysIfPukPinBlocked();
+			syncSecurityStatus();
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
 			return;
 		}
 
-		for (idx = (short)0; idx < MAX_SLOTS; ++idx) {
-			final PivSlot slot = slots[idx];
-			if (slot == null)
-				continue;
-			if (idx == SLOT_9B)
-				continue;
-			slot.flags[PivSlot.F_UNLOCKED] = true;
-			slot.flags[PivSlot.F_AFTER_VERIFY] = false;
-		}
+		syncSecurityStatus();
 	}
 
 	private void
@@ -2498,6 +2493,7 @@ public class PivApplet extends Applet
 		}
 
 		if (!pin.check(buffer, oldPinOff, (byte)8)) {
+			eraseKeysIfPukPinBlocked();
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
 			return;
@@ -2581,6 +2577,7 @@ public class PivApplet extends Applet
 		}
 
 		if (!pukPin.check(buffer, pukOff, (byte)8)) {
+			eraseKeysIfPukPinBlocked();
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pukPin.getTriesRemaining()));
 			return;
@@ -2964,6 +2961,44 @@ public class PivApplet extends Applet
 		wtlv.pop();
 		wtlv.end();
 		sendOutgoing(apdu);
+	}
+
+	private void
+	syncSecurityStatus()
+	{
+		short idx;
+
+		for (idx = (short)0; idx < MAX_SLOTS; ++idx) {
+			final PivSlot slot = slots[idx];
+			if (slot == null)
+				continue;
+			if (idx == SLOT_9B)
+				continue;
+			slot.flags[PivSlot.F_UNLOCKED] = pivPin.isValidated();
+			slot.flags[PivSlot.F_AFTER_VERIFY] = false;
+		}
+	}
+
+	private void
+	eraseKeysIfPukPinBlocked()
+	{
+		short idx;
+
+		if (pivPin.isValidated() || pukPin.isValidated())
+			return;
+		if (pivPin.getTriesRemaining() > (byte)0)
+			return;
+		if (pukPin.getTriesRemaining() > (byte)0)
+			return;
+
+		for (idx = (short)0; idx < MAX_SLOTS; ++idx) {
+			final PivSlot slot = slots[idx];
+			if (slot == null)
+				continue;
+			if (slot.asym == null)
+				continue;
+			slot.asym.getPrivate().clearKey();
+		}
 	}
 
 	private void
