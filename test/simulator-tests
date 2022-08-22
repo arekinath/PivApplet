@@ -386,14 +386,7 @@ class TestPivyBasic < Minitest::Test
 	end
 
 	def test_07_reset_admin
-		# pivy-tool set-admin doesn't yet get the pinfo admin key in
-		# 0.5.0 :( change this after next ver?
-		out = ykpivtool(:verify_pin, :read_object, '--id 0x5FC109')
-		assert_equal(0, $?)
-		assert(/^881a8918([0-9a-fA-F]+)$/.match(out))
-		@adminkey = $1
-
-		out = `pivy-tool -g #{$guid} -K #{@adminkey} -P #{DefaultPin} set-admin default`
+		out = `pivy-tool -g #{$guid} -P #{DefaultPin} set-admin default`
 		assert_equal(0, $?)
 
 		ykpivtool(:generate, '-s 9e', '-A RSA1024')
