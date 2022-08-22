@@ -2407,6 +2407,15 @@ public class PivApplet extends Applet
 			return;
 		}
 
+		/*
+		 * According to the PIV spec, if the PIN is blocked we should
+		 * return 0x6983 here (SW_FILE_INVALID).
+		 */
+		if (pin.getTriesRemaining() == 0) {
+			ISOException.throwIt(ISO7816.SW_FILE_INVALID);
+			return;
+		}
+
 		if (!pin.check(buffer, pinOff, (byte)8)) {
 			if (pukPin.getTriesRemaining() == 0) {
 				for (idx = (short)0; idx < MAX_SLOTS; ++idx) {
@@ -2454,7 +2463,7 @@ public class PivApplet extends Applet
 			pin = pukPin;
 			break;
 		default:
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			ISOException.throwIt((short)0x6A88);
 			return;
 		}
 
@@ -2479,8 +2488,16 @@ public class PivApplet extends Applet
 			return;
 		}
 
-		if (!pin.isValidated() &&
-		    !pin.check(buffer, oldPinOff, (byte)8)) {
+		/*
+		 * According to the PIV spec, if the PIN is blocked we should
+		 * return 0x6983 here (SW_FILE_INVALID).
+		 */
+		if (pin.getTriesRemaining() == 0) {
+			ISOException.throwIt(ISO7816.SW_FILE_INVALID);
+			return;
+		}
+
+		if (!pin.check(buffer, oldPinOff, (byte)8)) {
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pin.getTriesRemaining()));
 			return;
@@ -2526,7 +2543,10 @@ public class PivApplet extends Applet
 			pin = pivPin;
 			break;
 		default:
-			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+			/*
+			 * 800-73-4 part 2 3.2.3
+			 */
+			ISOException.throwIt((short)0x6A88);
 			return;
 		}
 
@@ -2551,8 +2571,16 @@ public class PivApplet extends Applet
 			return;
 		}
 
-		if (!pukPin.isValidated() &&
-		    !pukPin.check(buffer, pukOff, (byte)8)) {
+		/*
+		 * According to the PIV spec, if the PUK is blocked we should
+		 * return 0x6983 here (SW_FILE_INVALID).
+		 */
+		if (pukPin.getTriesRemaining() == 0) {
+			ISOException.throwIt(ISO7816.SW_FILE_INVALID);
+			return;
+		}
+
+		if (!pukPin.check(buffer, pukOff, (byte)8)) {
 			ISOException.throwIt((short)(
 			    (short)0x63C0 | pukPin.getTriesRemaining()));
 			return;
