@@ -362,7 +362,7 @@ public class SGList implements Readable {
 		while (len > 0) {
 			final short take = takeForRead(len);
 			final TransientBuffer buf = buffers[state[RPTR_BUF]];
-			if (take == (short)0)
+			if (take == (short)0 && state[RPTR_BUF] == state[WPTR_BUF])
 				break;
 			dest.append(buf, take);
 			len -= take;
