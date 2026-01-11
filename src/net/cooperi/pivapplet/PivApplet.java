@@ -215,6 +215,7 @@ public class PivApplet extends Applet
 
 	private static final byte PIV_ALG_DEFAULT = (byte)0x00;
 	private static final byte PIV_ALG_3DES = (byte)0x03;
+	private static final byte PIV_ALG_RSA3072 = (byte)0x05;
 	private static final byte PIV_ALG_RSA1024 = (byte)0x06;
 	private static final byte PIV_ALG_RSA2048 = (byte)0x07;
 	private static final byte PIV_ALG_AES128 = (byte)0x08;
@@ -757,6 +758,7 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_RSA
 			case PIV_ALG_RSA1024:
 			case PIV_ALG_RSA2048:
+			case PIV_ALG_RSA3072:
 				RSAPublicKey rpubk =
 				    (RSAPublicKey)slot.asym.getPublic();
 				final short rsalen = (short)(rpubk.getSize() / 8);
@@ -928,7 +930,7 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_RSA
 		/*
 		 * Similar to AES, just write RSA2048 if we support RSA. Let
-		 * RSA1024 support be implied.
+		 * RSA1024 and RSA3072 support be implied.
 		 */
 		pushAlgorithm(PIV_ALG_RSA2048);
 //#endif
@@ -1193,6 +1195,13 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
+		case PIV_ALG_RSA3072:
+			if (slot.asym == null || slot.asymAlg != alg) {
+				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
+				    (short)3072);
+			}
+			slot.asymAlg = alg;
+			break;
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
@@ -1279,6 +1288,7 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
+		case PIV_ALG_RSA3072:
 			RSAPublicKey rpubk =
 			    (RSAPublicKey)slot.asym.getPublic();
 			final short rsalen = (short)(rpubk.getSize() / 8);
@@ -1382,6 +1392,13 @@ public class PivApplet extends Applet
 			}
 			slot.asymAlg = alg;
 			break;
+		case PIV_ALG_RSA3072:
+			if (slot.asym == null || slot.asymAlg != alg) {
+				slot.asym = new KeyPair(KeyPair.ALG_RSA_CRT,
+				    (short)3072);
+			}
+			slot.asymAlg = alg;
+			break;
 //#endif
 //#if PIV_SUPPORT_EC
 		case PIV_ALG_ECCP256:
@@ -1437,6 +1454,7 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
+		case PIV_ALG_RSA3072:
 			final RSAPublicKey rpubk =
 			    (RSAPublicKey)slot.asym.getPublic();
 			final RSAPrivateCrtKey rprivk =
@@ -2034,6 +2052,9 @@ public class PivApplet extends Applet
 		case PIV_ALG_RSA2048:
 			cLen = (short)256;
 			break;
+		case PIV_ALG_RSA3072:
+			cLen = (short)384;
+			break;
 		}
 		if (!bufmgr.alloc(cLen, outBuf)) {
 			ISOException.throwIt(ISO7816.SW_FILE_FULL);
@@ -2334,6 +2355,7 @@ public class PivApplet extends Applet
 //#if PIV_SUPPORT_RSA
 		case PIV_ALG_RSA1024:
 		case PIV_ALG_RSA2048:
+		case PIV_ALG_RSA3072:
 			processGenAuthRsa(apdu, slot, alg, key, input,
 			    wanted, tag);
 			break;
@@ -3303,7 +3325,8 @@ public class PivApplet extends Applet
 		wtlv.push(ASN1_SEQ);
 //#if PIV_SUPPORT_RSA
 		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
-		    atslot.asymAlg == PIV_ALG_RSA2048) {
+		    atslot.asymAlg == PIV_ALG_RSA2048 ||
+		    atslot.asymAlg == PIV_ALG_RSA3072) {
 			wtlv.push(ASN1_OID);
 			if (rsaSha256 != null) {
 				wtlv.write(OID_RSA_SHA256, (short)0,
@@ -3438,7 +3461,8 @@ public class PivApplet extends Applet
 //#endif
 //#if PIV_SUPPORT_RSA
 		if (slot.asymAlg == PIV_ALG_RSA1024 ||
-		    slot.asymAlg == PIV_ALG_RSA2048) {
+		    slot.asymAlg == PIV_ALG_RSA2048 ||
+		    slot.asymAlg == PIV_ALG_RSA3072) {
 			final RSAPublicKey rpubk =
 			    (RSAPublicKey)slot.asym.getPublic();
 			wtlv.push64k(ASN1_SEQ);
@@ -3518,7 +3542,8 @@ public class PivApplet extends Applet
 		short avail, len;
 
 		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
-		    atslot.asymAlg == PIV_ALG_RSA2048) {
+		    atslot.asymAlg == PIV_ALG_RSA2048 ||
+		    atslot.asymAlg == PIV_ALG_RSA3072) {
 			if (rsaSha256 != null)
 				si = rsaSha256;
 			else
@@ -3569,7 +3594,8 @@ public class PivApplet extends Applet
 		wtlv.push(ASN1_SEQ);
 //#if PIV_SUPPORT_RSA
 		if (atslot.asymAlg == PIV_ALG_RSA1024 ||
-		    atslot.asymAlg == PIV_ALG_RSA2048) {
+		    atslot.asymAlg == PIV_ALG_RSA2048 ||
+		    atslot.asymAlg == PIV_ALG_RSA3072) {
 			wtlv.push(ASN1_OID);
 			if (rsaSha256 != null) {
 				wtlv.write(OID_RSA_SHA256, (short)0,
