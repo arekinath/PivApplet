@@ -759,20 +759,26 @@ public class PivApplet extends Applet
 			case PIV_ALG_RSA2048:
 				RSAPublicKey rpubk =
 				    (RSAPublicKey)slot.asym.getPublic();
-				final short rsalen = (short)(rpubk.getSize() / 8);
 
-				wtlv.push((byte)0x04, (short)(rsalen + 12));
-				wtlv.push((byte)0x81, (short)(rsalen + 1));
-				wtlv.startReserve((short)(rsalen + 1), tempBuf);
-				len = rpubk.getModulus(tempBuf.data(), tempBuf.wpos());
-				wtlv.endReserve(len);
-				wtlv.pop();
+				if (rpubk.isInitialized()) {
+					final short rsalen = (short)(rpubk.getSize() / 8);
 
-				wtlv.push((byte)0x82);
-				wtlv.startReserve((short)9, tempBuf);
-				len = rpubk.getExponent(tempBuf.data(), tempBuf.wpos());
-				wtlv.endReserve(len);
-				wtlv.pop();
+					wtlv.push((byte)0x04, (short)(rsalen + 12));
+
+					wtlv.push((byte)0x81, (short)(rsalen + 1));
+					wtlv.startReserve((short)(rsalen + 1), tempBuf);
+					len = rpubk.getModulus(tempBuf.data(), tempBuf.wpos());
+					wtlv.endReserve(len);
+					wtlv.pop();
+
+					wtlv.push((byte)0x82);
+					wtlv.startReserve((short)9, tempBuf);
+					len = rpubk.getExponent(tempBuf.data(), tempBuf.wpos());
+					wtlv.endReserve(len);
+					wtlv.pop();
+
+					wtlv.pop();
+				}
 				break;
 //#endif
 //#if PIV_SUPPORT_EC
@@ -780,20 +786,25 @@ public class PivApplet extends Applet
 			case PIV_ALG_ECCP384:
 				ECPublicKey epubk =
 				    (ECPublicKey)slot.asym.getPublic();
-				final short eclen = (short)(epubk.getSize() / 2);
 
-				wtlv.push((byte)0x04, (short)(eclen + 4));
-				wtlv.push((byte)0x86, (short)(eclen + 1));
-				wtlv.startReserve((short)(eclen + 1), tempBuf);
-				len = epubk.getW(tempBuf.data(), tempBuf.wpos());
-				wtlv.endReserve(len);
-				wtlv.pop();
+				if (epubk.isInitialized()) {
+					final short eclen = (short)(epubk.getSize() / 4);
+
+					wtlv.push((byte)0x04, (short)(eclen + 4));
+
+					wtlv.push((byte)0x86, (short)(eclen + 1));
+					wtlv.startReserve((short)(eclen + 1), tempBuf);
+					len = epubk.getW(tempBuf.data(), tempBuf.wpos());
+					wtlv.endReserve(len);
+					wtlv.pop();
+
+					wtlv.pop();
+				}
 				break;
 //#endif
 			default:
-				return;
+				break;
 			}
-			wtlv.pop();
 		}
 
 		wtlv.end();
